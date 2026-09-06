@@ -1,0 +1,34 @@
+{
+  "name": "reliefpulse-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "clean": "node -e \"const fs = require('fs'); fs.rmSync('.next', { recursive: true, force: true }); fs.rmSync('public/sw.js', { force: true }); try { fs.readdirSync('public').filter(f => f.startsWith('workbox-')).forEach(f => fs.rmSync('public/' + f, { force: true })); } catch (e) {}\"",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@react-google-maps/api": "^2.20.8",
+    "idb": "^8.0.0",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.378.0",
+    "next": "15.0.0",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "react-leaflet": "^5.0.0",
+    "socket.io-client": "^4.7.5"
+  },
+  "devDependencies": {
+    "@types/leaflet": "^1.9.12",
+    "@types/node": "^20.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "autoprefixer": "^10.4.20",
+    "next-pwa": "^5.6.0",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.4.5"
+  }
+}

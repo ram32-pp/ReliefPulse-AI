@@ -1,0 +1,191 @@
+'use client';
+
+import React, { useState } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
+import { useTranslation } from '@/lib/i18n';
+import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
+import { getUserReportCode } from '@/lib/userReport';
+import {
+  ShieldAlert,
+  Home,
+  Radio,
+  Clock,
+  Phone,
+  Menu,
+  X,
+  ChevronRight,
+} from 'lucide-react';
+
+interface HeaderNavbarProps {
+  className?: string;
+}
+
+export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({ className = '' }) => {
+  const router = useRouter();
+  const pathname = usePathname();
+  const { t } = useTranslation();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const navItems = [
+    { label: t('nav_home') || 'Home', path: '/', icon: Home },
+    { label: t('nav_sos') || 'Emergency SOS', path: '/sos', icon: Radio, highlight: true },
+    { label: t('nav_track') || 'Live Tracking', path: '/status', icon: Clock },
+  ];
+
+  const isActive = (path: string) => {
+    if (path === '/') return pathname === '/';
+    return pathname.startsWith(path);
+  };
+
+  const handleNavClick = (path: string) => {
+    setMobileMenuOpen(false);
+    if (path === '/status') {
+      const userCode = getUserReportCode();
+      if (userCode) {
+        router.push(`/status/${userCode}`);
+        return;
+      }
+    }
+    router.push(path);
+  };
+
+  return (
+    <header suppressHydrationWarning className={`w-full sticky top-3 z-50 transition-all duration-300 ${className}`}>
+      <div suppressHydrationWarning className="glass rounded-2xl border border-white/15 px-3 sm:px-4 py-2.5 shadow-2xl backdrop-blur-2xl flex items-center justify-between gap-2 sm:gap-4 overflow-hidden">
+        {/* Brand Logo & Telemetry Beacon */}
+        <div
+          onClick={() => router.push('/')}
+          className="flex items-center gap-2 sm:gap-2.5 cursor-pointer group shrink-0"
+        >
+          <div className="relative flex items-center justify-center shrink-0">
+            <div className="absolute inset-0 rounded-xl bg-pulse-red/40 animate-ping" />
+            <div className="relative p-2 rounded-xl bg-gradient-to-tr from-pulse-red to-amber-alert text-white shadow-lg group-hover:scale-105 transition-transform">
+              <ShieldAlert size={18} className="sm:w-5 sm:h-5" />
+            </div>
+          </div>
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm sm:text-base font-black tracking-tight text-gradient">
+                ReliefPulse
+              </span>
+              <span className="text-[9px] sm:text-[10px] px-1.5 py-0.2 rounded-md bg-sky-blue/15 text-sky-blue border border-sky-blue/30 font-mono font-bold uppercase">
+                AI
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 text-[9px] sm:text-[10px] text-slate-400 font-mono">
+              <span className="w-1.5 h-1.5 rounded-full bg-relief-green animate-pulse shrink-0" />
+              <span className="hidden sm:inline">{t('network_live_badge') || 'Emergency Network'}</span>
+              <span className="sm:hidden text-relief-green font-bold">LIVE</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Desktop Navigation Links */}
+        <nav className="hidden sm:flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/10 shrink-0">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const active = isActive(item.path);
+
+            return (
+              <button
+                key={item.path}
+                type="button"
+                onClick={() => handleNavClick(item.path)}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  active
+                    ? item.highlight
+                      ? 'bg-pulse-red text-white shadow-lg'
+                      : 'bg-sky-blue/20 text-sky-blue border border-sky-blue/30'
+                    : 'text-slate-300 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                <Icon size={14} className={item.highlight && !active ? 'text-pulse-red' : ''} />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Right Action Controls: 1122 Helpline + Language Switcher + Mobile Toggle */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Emergency Ambulance 1122 Button */}
+          <a
+            href="tel:1122"
+            title="Call Emergency Rescue 1122"
+            className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-pulse-red to-rose-600 hover:from-red-600 hover:to-rose-700 text-white text-[11px] sm:text-xs font-black font-mono shadow-md border border-red-400/40 transition-all active:scale-95 shrink-0 cursor-pointer"
+          >
+            <span className="text-xs">🚑</span>
+            <span className="tracking-wide">1122</span>
+            <span className="hidden xl:inline text-[10px] font-sans font-bold uppercase opacity-90">Rescue</span>
+          </a>
+
+          {/* Segmented Language Switcher */}
+          <div className="shrink-0">
+            <LanguageSwitcher compact={true} />
+          </div>
+
+          {/* Mobile Menu Button */}
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="sm:hidden p-1.5 rounded-xl bg-white/5 hover:bg-white/15 text-slate-300 border border-white/10 cursor-pointer shrink-0"
+            aria-label="Toggle Navigation Menu"
+          >
+            {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
+          </button>
+        </div>
+      </div>
+
+      {/* Mobile Drawer Menu */}
+      {mobileMenuOpen && (
+        <div className="sm:hidden mt-2 p-3 glass-panel rounded-2xl border border-white/15 shadow-2xl backdrop-blur-2xl animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="space-y-1">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const active = isActive(item.path);
+
+              return (
+                <button
+                  key={item.path}
+                  type="button"
+                  onClick={() => handleNavClick(item.path)}
+                  className={`w-full px-3 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${
+                    active
+                      ? 'bg-sky-blue/20 text-sky-blue border border-sky-blue/30'
+                      : 'text-slate-300 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Icon size={16} className={item.highlight ? 'text-pulse-red' : ''} />
+                    <span>{item.label}</span>
+                  </div>
+                  <ChevronRight size={14} className="text-slate-500 rtl:rotate-180" />
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="h-px w-full bg-white/10 my-2.5" />
+
+          {/* Emergency Helplines Direct Dialers */}
+          <div className="grid grid-cols-2 gap-2 text-center">
+            <a
+              href="tel:1122"
+              className="py-2.5 px-3 rounded-xl bg-pulse-red text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-lg active:scale-95 cursor-pointer font-mono"
+            >
+              <Phone size={13} /> 1122 Rescue
+            </a>
+            <a
+              href="tel:115"
+              className="py-2.5 px-3 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 text-xs font-semibold flex items-center justify-center gap-1.5 border border-white/10 active:scale-95 cursor-pointer font-mono"
+            >
+              <Phone size={13} /> 115 Edhi
+            </a>
+          </div>
+        </div>
+      )}
+    </header>
+  );
+};
+
+export default HeaderNavbar;

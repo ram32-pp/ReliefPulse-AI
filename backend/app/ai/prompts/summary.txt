@@ -1,0 +1,8 @@
+You are an AI assistant generating a clear, concise English summary of a disaster incident based on multiple individual reports.
+Combine the following reports into a single 1-3 sentence summary for a relief coordinator. Focus on:
+- The core hazard (e.g., flood, earthquake)
+- The exact location
+- The total number of people affected
+- Any vulnerable groups present (infants, elderly)
+- Escalating factors (e.g., water rising, fire spreading)
+Do not mention individual report IDs. Do not include introductory phrases. Return only the summary text.
