@@ -4,7 +4,7 @@
   "description": "Voice-first disaster management platform",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#FAF8F5",
+  "background_color": "#070b14",
   "theme_color": "#1B2A4A",
   "icons": [
     {

@@ -5,22 +5,18 @@ import { TriageQueue } from '@/components/coordinator/TriageQueue';
 import nextDynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/lib/i18n';
-import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
-import { fetchTriageQueue, rejectIncident } from '@/lib/api';
+import { CoordinatorNavbar } from '@/components/navigation/CoordinatorNavbar';
+import { fetchTriageQueue, rejectIncident, triggerRapidCallback } from '@/lib/api';
 import {
-  ShieldAlert,
   MapPin,
-  Activity,
   Filter,
-  Search,
   CheckCircle2,
   AlertTriangle,
-  ArrowLeft,
-  ArrowRight,
-  Video,
   Radio,
-  Layers,
   Sparkles,
+  ShieldCheck,
+  Activity,
+  PhoneCall,
 } from 'lucide-react';
 
 const LiveMap = nextDynamic(() => import('@/components/coordinator/LiveMap'), {
@@ -33,67 +29,13 @@ const LiveMap = nextDynamic(() => import('@/components/coordinator/LiveMap'), {
   ),
 });
 
-const MOCK_INCIDENTS = [
-  {
-    incident_id: 'C-491',
-    incident_code: 'C-491',
-    severity: 'critical' as const,
-    hazard_type: 'flood',
-    location: { name: 'Korangi Sector 4, Street 7-B' },
-    total_reports: 14,
-    total_individuals: 42,
-    medical_risks: [{ type: 'infant', count: 1 }, { type: 'elderly', count: 2 }],
-    cluster_confidence: 0.94,
-    ai_reasoning: [
-      'Infant present → auto-escalation trigger',
-      '14 independent corroborating reports in 150m radius',
-      'Water level rising (3ft → 5ft over 2 hours)',
-    ],
-    anomaly_flags: [],
-    first_report_at: '2025-01-01T10:00:00.000Z',
-    last_report_at: '2025-01-01T10:10:00.000Z',
-  },
-  {
-    incident_id: 'C-492',
-    incident_code: 'C-492',
-    severity: 'high' as const,
-    hazard_type: 'fire',
-    location: { name: 'Gulshan Block 13-D' },
-    total_reports: 8,
-    total_individuals: 18,
-    medical_risks: [{ type: 'injured', count: 3 }],
-    cluster_confidence: 0.88,
-    ai_reasoning: [
-      'Electrical short circuit spread to residential block',
-      'Smoke inhalation hazard confirmed by 4 voice notes',
-    ],
-    anomaly_flags: [],
-    first_report_at: '2025-01-01T09:45:00.000Z',
-    last_report_at: '2025-01-01T10:05:00.000Z',
-  },
-  {
-    incident_id: 'C-493',
-    incident_code: 'C-493',
-    severity: 'medium' as const,
-    hazard_type: 'structural_collapse',
-    location: { name: 'Lyari Old Town' },
-    total_reports: 5,
-    total_individuals: 12,
-    medical_risks: [{ type: 'trapped', count: 2 }],
-    cluster_confidence: 0.76,
-    ai_reasoning: ['Partial wall collapse after heavy rain'],
-    anomaly_flags: [],
-    first_report_at: '2025-01-01T09:30:00.000Z',
-    last_report_at: '2025-01-01T10:00:00.000Z',
-  },
-];
-
 export default function CoordinatorDashboard() {
   const router = useRouter();
   const { t, isRTL } = useTranslation();
   const [selectedIncident, setSelectedIncident] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'open' | 'rejected'>('open');
   const [severityFilter, setSeverityFilter] = useState<'all' | 'critical' | 'high' | 'medium'>('all');
-  const mockIncidents = MOCK_INCIDENTS;
+  const [triageTierFilter, setTriageTierFilter] = useState<'all' | 'verified_emergency' | 'suspected_unconfirmed' | 'flagged_or_prank'>('all');
 
   const [liveIncidents, setLiveIncidents] = useState<any[] | null>(null);
   const [isLiveActive, setIsLiveActive] = useState(false);
@@ -104,9 +46,10 @@ export default function CoordinatorDashboard() {
       try {
         const data = await fetchTriageQueue({
           severity: severityFilter === 'all' ? undefined : severityFilter,
-          status: 'open',
+          status: statusFilter,
+          triage_tier: triageTierFilter === 'all' ? undefined : triageTierFilter,
         });
-        if (isMounted && data && Array.isArray(data.incidents) && data.incidents.length > 0) {
+        if (isMounted && data && Array.isArray(data.incidents)) {
           setLiveIncidents(data.incidents);
           setIsLiveActive(true);
         }
@@ -116,12 +59,28 @@ export default function CoordinatorDashboard() {
     };
 
     loadQueue();
-    const interval = setInterval(loadQueue, 10000);
+    const interval = setInterval(loadQueue, 4000);
     return () => {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [severityFilter]);
+  }, [severityFilter, statusFilter, triageTierFilter]);
+
+  const handleTriggerCallback = async (id: string) => {
+    try {
+      await triggerRapidCallback({ incidentId: id, channel: 'auto' });
+      const data = await fetchTriageQueue({
+        severity: severityFilter === 'all' ? undefined : severityFilter,
+        status: statusFilter,
+        triage_tier: triageTierFilter === 'all' ? undefined : triageTierFilter,
+      });
+      if (data && Array.isArray(data.incidents)) {
+        setLiveIncidents(data.incidents);
+      }
+    } catch (err) {
+      console.error('Trigger callback error:', err);
+    }
+  };
 
   const handleRejectIncident = async (id: string) => {
     if (!confirm('Are you sure you want to reject this emergency signal as a false alarm or duplicate?')) {
@@ -142,125 +101,123 @@ export default function CoordinatorDashboard() {
     }
   };
 
-  const activeIncidents = liveIncidents && liveIncidents.length > 0 ? liveIncidents : mockIncidents;
+  const activeIncidents = liveIncidents && liveIncidents.length > 0 ? liveIncidents : [];
   const filteredIncidents =
     severityFilter === 'all'
       ? activeIncidents
       : activeIncidents.filter((i) => i.severity === severityFilter);
-
-  const BackIcon = isRTL ? ArrowRight : ArrowLeft;
 
   return (
     <div
       suppressHydrationWarning
       className="flex flex-col h-screen w-screen bg-[#060913] text-warm-white overflow-hidden font-sans"
     >
-      {/* Top Cyber Command Header with Language Switcher */}
-      <header
-        suppressHydrationWarning
-        className="h-16 border-b border-white/10 bg-slate-950/80 backdrop-blur-2xl px-6 flex items-center justify-between shrink-0 z-50"
-      >
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => router.push('/')}
-            className="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 transition-all active:scale-95 cursor-pointer"
-            title="Return Home"
-          >
-            <BackIcon size={18} />
-          </button>
-
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <span className="absolute inset-0 rounded-full bg-pulse-red/50 animate-ping"></span>
-              <div className="relative p-2 rounded-xl bg-pulse-red text-white">
-                <ShieldAlert size={20} />
-              </div>
-            </div>
-            <div>
-              <h1 className="text-lg font-black tracking-tight text-gradient flex items-center gap-2">
-                {t('coordinator_title')}
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-blue/20 text-sky-blue border border-sky-blue/40 font-mono">
-                  LIVE AI
-                </span>
-              </h1>
-              <p className="text-[10px] text-slate-400 font-mono">
-                {t('coordinator_subtitle')}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2.5">
-          <nav className="hidden lg:flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/10 text-xs">
-            <button
-              onClick={() => router.push('/')}
-              className="px-3 py-1 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-            >
-              {t('nav_home')}
-            </button>
-            <button
-              onClick={() => router.push('/sos')}
-              className="px-3 py-1 rounded-lg bg-pulse-red/20 text-pulse-red hover:bg-pulse-red/30 transition-colors font-semibold cursor-pointer"
-            >
-              {t('nav_sos')}
-            </button>
-            <button
-              onClick={() => router.push('/status/RP-QUEUED')}
-              className="px-3 py-1 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-            >
-              {t('nav_track')}
-            </button>
-          </nav>
-
-          <div className="hidden sm:flex items-center gap-2 text-xs font-mono">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10">
-              <Radio size={13} className="text-relief-green animate-pulse" />
-              <span className="text-slate-400">Signals:</span>
-              <span className="text-relief-green font-bold">27</span>
-            </div>
-
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10">
-              <Activity size={13} className="text-amber-alert" />
-              <span className="text-slate-400">AI:</span>
-              <span className="text-amber-alert font-bold">94%</span>
-            </div>
-          </div>
-          <a
-            href="tel:1122"
-            title="Call Emergency Rescue Ambulance 1122"
-            className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-pulse-red to-rose-600 hover:from-red-600 hover:to-rose-700 text-white text-[11px] sm:text-xs font-black font-mono shadow-md border border-red-400/40 transition-all active:scale-95 shrink-0 cursor-pointer"
-          >
-            <span className="text-xs">🚑</span>
-            <span className="tracking-wide">1122</span>
-          </a>
-
-          <LanguageSwitcher compact={true} />
-        </div>
-      </header>
+      {/* Dedicated Coordinator Command Navbar */}
+      <div className="px-3 sm:px-6 py-2.5 shrink-0 z-50">
+        <CoordinatorNavbar totalIncidents={activeIncidents.length} />
+      </div>
 
       {/* Main Split Interface Area */}
-      <div className="flex flex-grow h-[calc(100vh-4rem)] overflow-hidden">
+      <div className="flex flex-grow overflow-hidden border-t border-white/10">
         {/* Left Side: Triage Queue Panel */}
         <div className="w-[360px] sm:w-[420px] xl:w-[460px] border-r rtl:border-r-0 rtl:border-l border-white/10 bg-slate-950/60 backdrop-blur-xl flex flex-col h-full shrink-0">
           {/* Queue Filter Bar */}
-          <div className="p-4 border-b border-white/10 flex items-center justify-between gap-2 shrink-0">
-            <div className="flex items-center gap-2">
-              <Filter size={16} className="text-sky-blue" />
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                {`${t('triage_queue')} (${filteredIncidents.length})`}
-              </span>
-              {isLiveActive && (
-                <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono text-[10px] font-bold animate-pulse">
-                  LIVE
+          <div className="p-3.5 border-b border-white/10 space-y-2.5 shrink-0">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Filter size={15} className="text-sky-blue" />
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                  {statusFilter === 'open' ? t('triage_queue') : 'Flagged & Fake Reports'}{' '}
+                  <span className="font-mono tabular-nums">({filteredIncidents.length})</span>
                 </span>
-              )}
+                {isLiveActive && (
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono text-[10px] font-bold animate-pulse">
+                    LIVE
+                  </span>
+                )}
+              </div>
+
+              {/* Status Tab (Active vs Flagged/Fake) */}
+              <div className="flex items-center gap-1 bg-white/5 p-0.5 rounded-xl border border-white/10 text-[11px]">
+                <button
+                  onClick={() => setStatusFilter('open')}
+                  className={`px-2.5 py-0.5 rounded-lg transition-all cursor-pointer font-medium ${
+                    statusFilter === 'open'
+                      ? 'bg-sky-blue text-slate-950 font-bold shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Active
+                </button>
+                <button
+                  onClick={() => setStatusFilter('rejected')}
+                  className={`px-2.5 py-0.5 rounded-lg transition-all cursor-pointer font-medium ${
+                    statusFilter === 'rejected'
+                      ? 'bg-pulse-red text-white font-bold shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Fake / Spam
+                </button>
+              </div>
             </div>
 
-            <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/10 text-xs">
+            {/* 3-Tier Verification Routing Tabs */}
+            <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/10 text-[11px] overflow-x-auto scrollbar-none">
+              <button
+                onClick={() => setTriageTierFilter('all')}
+                className={`px-2 py-1 rounded-lg transition-all shrink-0 cursor-pointer font-medium ${
+                  triageTierFilter === 'all'
+                    ? 'bg-white/20 text-white font-bold'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                All Tiers
+              </button>
+              <button
+                onClick={() => setTriageTierFilter('verified_emergency')}
+                className={`px-2 py-1 rounded-lg transition-all shrink-0 cursor-pointer font-bold flex items-center gap-1 ${
+                  triageTierFilter === 'verified_emergency'
+                    ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/50 shadow-sm'
+                    : 'text-emerald-400/80 hover:text-emerald-300'
+                }`}
+                title="80-100 Score: Direct immediate dispatch"
+              >
+                <ShieldCheck size={11} className="text-emerald-400" />
+                Verified (80-100)
+              </button>
+              <button
+                onClick={() => setTriageTierFilter('suspected_unconfirmed')}
+                className={`px-2 py-1 rounded-lg transition-all shrink-0 cursor-pointer font-bold flex items-center gap-1 ${
+                  triageTierFilter === 'suspected_unconfirmed'
+                    ? 'bg-amber-500/30 text-amber-300 border border-amber-500/50 shadow-sm'
+                    : 'text-amber-400/80 hover:text-amber-300'
+                }`}
+                title="35-79 Score: Rapid automated callback queue"
+              >
+                <Activity size={11} className="text-amber-400" />
+                Callback (35-79)
+              </button>
+              <button
+                onClick={() => setTriageTierFilter('flagged_or_prank')}
+                className={`px-2 py-1 rounded-lg transition-all shrink-0 cursor-pointer font-bold flex items-center gap-1 ${
+                  triageTierFilter === 'flagged_or_prank'
+                    ? 'bg-rose-500/30 text-rose-300 border border-rose-500/50 shadow-sm'
+                    : 'text-rose-400/80 hover:text-rose-300'
+                }`}
+                title="0-34 Score: Quarantined audit view"
+              >
+                <AlertTriangle size={11} className="text-rose-400" />
+                Audit (0-34)
+              </button>
+            </div>
+
+            {/* Severity Sub-Filter */}
+            <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/10 text-xs w-fit">
               <button
                 onClick={() => setSeverityFilter('all')}
                 className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                  severityFilter === 'all' ? 'bg-sky-blue text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+                  severityFilter === 'all' ? 'bg-white/20 text-warm-white font-bold' : 'text-slate-400 hover:text-white'
                 }`}
               >
                 {t('filter_all')}
@@ -291,6 +248,7 @@ export default function CoordinatorDashboard() {
               onSelect={setSelectedIncident}
               onReject={handleRejectIncident}
               selectedId={selectedIncident || undefined}
+              onTriggerCallback={handleTriggerCallback}
             />
           </div>
         </div>

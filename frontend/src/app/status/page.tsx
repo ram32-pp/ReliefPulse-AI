@@ -96,7 +96,7 @@ export default function StatusIndexPage() {
                 value={trackInput}
                 onChange={(e) => setTrackInput(e.target.value)}
                 placeholder="Enter incident code (e.g. RP-2847)"
-                className="flex-grow bg-slate-900/90 border border-white/15 rounded-xl px-3.5 py-2.5 text-xs text-warm-white placeholder:text-slate-500 focus:outline-none focus:border-sky-blue font-mono uppercase"
+                className="flex-grow bg-slate-900/90 border border-white/15 rounded-xl px-3.5 py-2.5 text-xs text-warm-white placeholder:text-slate-500 focus:outline-none focus:border-sky-blue font-mono tabular-nums uppercase"
               />
               <button
                 type="submit"

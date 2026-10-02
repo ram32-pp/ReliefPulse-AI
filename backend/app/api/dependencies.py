@@ -43,6 +43,10 @@ def device_rate_limit(window_seconds: int = 180, max_requests: int = 1):
     Zero-login compatible. Uses Redis with in-memory TTL fallback.
     """
     async def dependency(request: Request):
+        # Allow explicit dev bypass header if needed or if running in development mode
+        from app.config import settings
+        if settings.fastapi_env == "development" or request.headers.get("X-Dev-Bypass") == "true":
+            return "dev_device"
         # Extract device identifier or client IP
         device_id = (
             request.headers.get("X-Device-ID")

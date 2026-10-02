@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_db
 from app.api.schemas import ReportCreate, ReportResponse, ReportStatus, TimelineStep, GPSLocation
@@ -78,10 +78,12 @@ def _build_provenance_flags(report) -> list[str]:
 @router.post("", response_model=ReportResponse, status_code=201, dependencies=[Depends(device_rate_limit(180, 1))])
 async def submit_report_json(
     report_data: ReportCreate,
+    request: Request,
     report_service: ReportService = Depends(get_report_service),
 ):
     """Submit a new emergency report via JSON payload. Returns HTTP 201 <300ms fast path."""
-    report = await report_service.create_report(report_data)
+    client_ip = request.client.host if request.client else None
+    report = await report_service.create_report(report_data, client_ip=client_ip)
     code = _make_display_code(report.id)
 
     ai_rep = getattr(report, "ai_verification_report", {}) or {}
@@ -113,11 +115,20 @@ async def submit_report_json(
         grounding_label=getattr(report, "grounding_label", None),
         rubric_breakdown=getattr(report, "rubric_breakdown", None),
         provenance_flags=prov_flags,
+        triage_tier=getattr(report, "triage_tier", "suspected_unconfirmed"),
+        cluster_density_factor=getattr(report, "cluster_density_factor", 0.0),
+        device_integrity_score=getattr(report, "device_integrity_score", 100),
+        media_forensics_score=getattr(report, "media_forensics_score", 100),
+        semantic_consistency_score=getattr(report, "semantic_consistency_score", 100),
+        tamper_penalty=getattr(report, "tamper_penalty", 0),
+        callback_status=getattr(report, "callback_status", None),
+        verification_breakdown_5layer=getattr(report, "verification_breakdown_5layer", None),
     )
 
 
 @router.post("/multipart", response_model=ReportResponse, status_code=201, dependencies=[Depends(device_rate_limit(180, 1))])
 async def submit_report_multipart(
+    request: Request,
     input_type: str = Form("voice"),
     text_input: Optional[str] = Form(None),
     text_note: Optional[str] = Form(None),
@@ -127,14 +138,17 @@ async def submit_report_multipart(
     hazard_types: Optional[str] = Form(None), # JSON or comma separated
     hazards: Optional[str] = Form(None),
     audio_file: Optional[UploadFile] = File(None),
+    image_file: Optional[UploadFile] = File(None),
     media_source: Optional[str] = Form("voice_direct"),
+    capture_nonce: Optional[str] = Form(None),
     report_service: ReportService = Depends(get_report_service),
 ):
     """
-    Submit emergency SOS with direct voice audio (.webm, .wav, .mp3, .m4a) and text.
-    Uploads audio to Alibaba Cloud OSS (with local fallback) and executes deterministic verification.
+    Submit emergency SOS with direct voice audio (.webm, .wav, .mp3, .m4a), text, and optional media.
+    Uploads media to storage and executes 5-layer verification.
     Returns HTTP 201 in <300ms fast path.
     """
+    client_ip = request.client.host if request.client else None
     audio_bytes = None
     audio_url = None
     if audio_file:
@@ -145,6 +159,10 @@ async def submit_report_multipart(
             content_type=audio_file.content_type or "audio/webm",
             folder="audio",
         )
+
+    image_bytes = None
+    if image_file:
+        image_bytes = await image_file.read()
 
     parsed_hazards = []
     raw_h = hazards or hazard_types
@@ -172,12 +190,15 @@ async def submit_report_multipart(
         hazard_types=parsed_hazards,
         hazards=parsed_hazards,
         media_source=media_source,
+        capture_nonce=capture_nonce,
     )
 
     report = await report_service.create_report(
         report_data=report_create,
         audio_bytes=audio_bytes,
         audio_mime_type=audio_file.content_type if audio_file else "audio/webm",
+        image_bytes=image_bytes,
+        client_ip=client_ip,
     )
 
     code = _make_display_code(report.id)
@@ -210,6 +231,14 @@ async def submit_report_multipart(
         grounding_label=getattr(report, "grounding_label", None),
         rubric_breakdown=getattr(report, "rubric_breakdown", None),
         provenance_flags=prov_flags,
+        triage_tier=getattr(report, "triage_tier", "suspected_unconfirmed"),
+        cluster_density_factor=getattr(report, "cluster_density_factor", 0.0),
+        device_integrity_score=getattr(report, "device_integrity_score", 100),
+        media_forensics_score=getattr(report, "media_forensics_score", 100),
+        semantic_consistency_score=getattr(report, "semantic_consistency_score", 100),
+        tamper_penalty=getattr(report, "tamper_penalty", 0),
+        callback_status=getattr(report, "callback_status", None),
+        verification_breakdown_5layer=getattr(report, "verification_breakdown_5layer", None),
     )
 
 
@@ -332,6 +361,14 @@ def _serialize_report_status(report) -> ReportStatus:
         grounding_label=getattr(report, "grounding_label", None),
         rubric_breakdown=getattr(report, "rubric_breakdown", None),
         provenance_flags=prov_flags,
+        triage_tier=getattr(report, "triage_tier", "suspected_unconfirmed"),
+        cluster_density_factor=getattr(report, "cluster_density_factor", 0.0),
+        device_integrity_score=getattr(report, "device_integrity_score", 100),
+        media_forensics_score=getattr(report, "media_forensics_score", 100),
+        semantic_consistency_score=getattr(report, "semantic_consistency_score", 100),
+        tamper_penalty=getattr(report, "tamper_penalty", 0),
+        callback_status=getattr(report, "callback_status", None),
+        verification_breakdown_5layer=getattr(report, "verification_breakdown_5layer", None),
     )
 
 

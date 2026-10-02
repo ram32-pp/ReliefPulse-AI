@@ -56,6 +56,14 @@ class ReportResponse(BaseModel):
     grounding_label: Optional[str] = None
     rubric_breakdown: Optional[Dict[str, Any]] = None
     provenance_flags: Optional[List[str]] = None
+    triage_tier: Optional[str] = "suspected_unconfirmed"
+    cluster_density_factor: Optional[float] = 0.0
+    device_integrity_score: Optional[int] = 100
+    media_forensics_score: Optional[int] = 100
+    semantic_consistency_score: Optional[int] = 100
+    tamper_penalty: Optional[int] = 0
+    callback_status: Optional[str] = None
+    verification_breakdown_5layer: Optional[Dict[str, Any]] = None
 
 class TimelineStep(BaseModel):
     step: str
@@ -96,6 +104,14 @@ class ReportStatus(BaseModel):
     grounding_label: Optional[str] = None
     rubric_breakdown: Optional[Dict[str, Any]] = None
     provenance_flags: Optional[List[str]] = None
+    triage_tier: Optional[str] = "suspected_unconfirmed"
+    cluster_density_factor: Optional[float] = 0.0
+    device_integrity_score: Optional[int] = 100
+    media_forensics_score: Optional[int] = 100
+    semantic_consistency_score: Optional[int] = 100
+    tamper_penalty: Optional[int] = 0
+    callback_status: Optional[str] = None
+    verification_breakdown_5layer: Optional[Dict[str, Any]] = None
 
 # Coordinator Schemas
 class IncidentDetail(BaseModel):
@@ -125,6 +141,27 @@ class IncidentDetail(BaseModel):
     report_id: Optional[str] = None
     input_type: Optional[str] = "voice"
     phone_number: Optional[str] = None
+    # 5-Layer Extensions
+    triage_tier: Optional[str] = "suspected_unconfirmed"
+    cluster_density_factor: Optional[float] = 0.0
+    device_integrity_score: Optional[int] = 100
+    verification_score: Optional[int] = 0
+    tamper_penalty: Optional[int] = 0
+    callback_status: Optional[str] = None
+    verification_breakdown_5layer: Optional[Dict[str, Any]] = None
+
+class CallbackRequest(BaseModel):
+    report_id: Optional[str] = None
+    incident_id: Optional[str] = None
+    phone_number: Optional[str] = None
+    custom_message: Optional[str] = None
+
+class CallbackResponse(BaseModel):
+    status: str
+    report_id: str
+    phone_number: Optional[str] = None
+    callback_status: str
+    message: str
 
 class TriageQueueResponse(BaseModel):
     total: int

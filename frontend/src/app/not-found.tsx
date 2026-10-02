@@ -31,14 +31,6 @@ export default function NotFound() {
             <LifeBuoy size={16} />
             <span>Broadcast Emergency SOS</span>
           </Link>
-
-          <Link
-            href="/coordinator"
-            className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-white/10 text-slate-200 font-semibold text-sm hover:bg-white/20 transition-all active:scale-95"
-          >
-            <ArrowLeft size={16} />
-            <span>Rescue Command Center</span>
-          </Link>
         </div>
 
         <div className="pt-6 border-t border-white/10 text-xs text-slate-400">

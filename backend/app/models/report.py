@@ -37,6 +37,16 @@ class Report(BaseModel):
     grounding_status: Mapped[str] = mapped_column(String, default="unreported_localized_incident") # "authoritative_match | unreported_localized_incident"
     cluster_id: Mapped[Optional[str]] = mapped_column(String)
     ai_verification_report: Mapped[Optional[dict]] = mapped_column(JSONB)
+
+    # 5-Layer Emergency Verification Fields
+    triage_tier: Mapped[str] = mapped_column(String, default="suspected_unconfirmed") # "verified_emergency" | "suspected_unconfirmed" | "flagged_or_prank"
+    cluster_density_factor: Mapped[Optional[float]] = mapped_column(Float, default=0.0) # Cd = ln(1 + N_unique)
+    device_integrity_score: Mapped[Optional[int]] = mapped_column(Integer, default=100)
+    media_forensics_score: Mapped[Optional[int]] = mapped_column(Integer, default=100)
+    semantic_consistency_score: Mapped[Optional[int]] = mapped_column(Integer, default=100)
+    tamper_penalty: Mapped[Optional[int]] = mapped_column(Integer, default=0)
+    callback_status: Mapped[Optional[str]] = mapped_column(String, nullable=True) # "pending" | "triggered" | "verified" | "failed"
+    verification_breakdown_5layer: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     
     # Provenance and breakdown metadata
     media_source: Mapped[Optional[str]] = mapped_column(String, default="voice_direct")

@@ -11,6 +11,7 @@ const withPWA = withPWAInit({
 });
 
 const nextConfig: NextConfig = {
+  serverExternalPackages: ['idb'],
   reactStrictMode: true,
   async headers() {
     return [

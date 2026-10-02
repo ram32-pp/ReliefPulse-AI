@@ -192,7 +192,7 @@ export const VideoRecorder: React.FC<VideoRecorderProps> = ({ onVideoCaptured, c
 
             {/* Live Recording HUD Status */}
             {isRecording ? (
-              <div className="absolute top-4 left-4 flex items-center gap-2 px-3 py-1.5 rounded-full bg-pulse-red/90 text-white font-mono text-xs font-bold shadow-lg animate-pulse backdrop-blur-md">
+              <div className="absolute top-4 left-4 flex items-center gap-2 px-3 py-1.5 rounded-full bg-pulse-red/90 text-white font-mono tabular-nums text-xs font-bold shadow-lg animate-pulse backdrop-blur-md">
                 <span className="w-2.5 h-2.5 rounded-full bg-white animate-ping"></span>
                 REC {formatTime(recordingTime)}
               </div>

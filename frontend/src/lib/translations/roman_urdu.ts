@@ -78,9 +78,9 @@ export const roman_urdu: Record<TranslationKey, string> = {
 
   // Voice Recorder
   voice_recording_title: "Awaz SOS Recorder",
-  voice_recording_sub: "Kisi bhi zuban mein hangami halat bol kar batayein",
+  voice_recording_sub: "Hangami halat bol kar batayein",
   tap_to_speak: "BOLNE KE LIYE DABAYEIN",
-  speak_any_language: "Kisi bhi zuban mein bolein (Urdu, English, Pashto, Sindhi...)",
+  speak_any_language: "Bolein (Urdu, English, Pashto, Sindhi...)",
   voice_recorded: "Awaz ka message record ho kar jur gaya!",
   tap_mic_start: "Recording shuru karne ke liye mic dabayein.",
   listening: "Sun raha hai...",
@@ -90,7 +90,7 @@ export const roman_urdu: Record<TranslationKey, string> = {
   sos_report_header: "Hangami SOS Report Bhejein",
   sos_signal_broadcast: "HANGAMI SIGNAL BROADCAST",
   what_happened: "Kya hua? Batayein...",
-  what_happened_sub: "Urdu, Pashto, Sindhi ya kisi bhi zuban mein bolein. AI foran jaiza le ga.",
+  what_happened_sub: "Urdu, Pashto, Sindhi mein bolein. AI foran jaiza le ga.",
   or_type: "ya likhein",
   type_here: "Tafseelat likhein jese pani ki satah, phansay log, medical imdad...",
   write_incident_details: "Waqia Ki Tafseelat Likhein",

@@ -1,4 +1,4 @@
-import { openDB, DBSchema, IDBPDatabase } from 'idb';
+import type { DBSchema, IDBPDatabase } from 'idb';
 
 export type SyncStatus = 'queued' | 'syncing' | 'synced' | 'failed';
 
@@ -25,15 +25,21 @@ interface ReliefPulseDB extends DBSchema {
 let dbPromise: Promise<IDBPDatabase<ReliefPulseDB>> | null = null;
 
 const getDB = async (): Promise<IDBPDatabase<ReliefPulseDB> | null> => {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === 'undefined' || typeof indexedDB === 'undefined') return null;
   if (!dbPromise) {
-    dbPromise = openDB<ReliefPulseDB>('ReliefPulseDB', 2, {
-      upgrade(db, oldVersion) {
-        if (!db.objectStoreNames.contains('offlineQueue')) {
-          db.createObjectStore('offlineQueue', { keyPath: 'id' });
-        }
-      },
-    });
+    try {
+      const { openDB } = await import('idb');
+      dbPromise = openDB<ReliefPulseDB>('ReliefPulseDB', 2, {
+        upgrade(db) {
+          if (!db.objectStoreNames.contains('offlineQueue')) {
+            db.createObjectStore('offlineQueue', { keyPath: 'id' });
+          }
+        },
+      });
+    } catch (err) {
+      console.warn('[offline-db] Failed to initialize IndexedDB:', err);
+      return null;
+    }
   }
   return dbPromise;
 };

@@ -20,14 +20,19 @@ async def _run_verification_background(
     audio_bytes: Optional[bytes],
     audio_mime_type: str,
     quick_hazard_tags: Optional[List[str]],
+    device_info: Optional[Dict[str, Any]] = None,
+    client_ip: Optional[str] = None,
+    image_bytes: Optional[bytes] = None,
+    video_bytes: Optional[bytes] = None,
+    capture_nonce: Optional[str] = None,
 ):
     """
-    Background Task: Asynchronous 4-Phase Voice, Text, and Location Verification.
-    Runs in background so client receives a fast-path (<300ms) response.
+    Background Task: Asynchronous 5-Layer Emergency Verification Pipeline.
+    Runs in background so citizen receives a fast-path (<300ms) response.
     Never auto-rejects; on error/timeout applies fail-open.
     """
     try:
-        # Run parallel multi-stage verification pipeline
+        # Run parallel multi-stage 5-layer verification pipeline
         verification_result = await verification_pipeline.run_full_pipeline(
             location_name=location_name,
             gps_coords=gps_tuple,
@@ -36,10 +41,16 @@ async def _run_verification_background(
             audio_mime_type=audio_mime_type,
             hazard_tags=quick_hazard_tags,
             report_id=report_id,
+            device_info=device_info,
+            client_ip=client_ip,
+            image_bytes=image_bytes,
+            video_bytes=video_bytes,
+            capture_nonce=capture_nonce,
         )
 
         v_score = verification_result.get("verification_score", 40)
         v_level = verification_result.get("vulnerability_level", "requires_human_triage")
+        triage_tier = (verification_result.get("triage_tier") or "SUSPECTED_UNCONFIRMED").upper()
         is_verified = verification_result.get("is_verified", False)
 
         final_status = "pending_audit"
@@ -53,6 +64,14 @@ async def _run_verification_background(
                 rep.verification_score = v_score
                 rep.vulnerability_level = v_level
                 rep.confidence_score = v_score / 100.0
+                rep.triage_tier = triage_tier.lower()
+                rep.cluster_density_factor = verification_result.get("cluster_density_factor", 0.0)
+                rep.device_integrity_score = verification_result.get("device_integrity_score", 100)
+                rep.media_forensics_score = verification_result.get("visual_score", 100)
+                rep.semantic_consistency_score = verification_result.get("consistency_score", 100)
+                rep.tamper_penalty = int(verification_result.get("penalty_tamper", 0))
+                rep.verification_breakdown_5layer = verification_result.get("verification_breakdown_5layer")
+
                 rep.semantic_score = verification_result.get("semantic_score", 0)
                 rep.consistency_score = verification_result.get("consistency_score", 0)
                 rep.grounding_score = verification_result.get("grounding_score", 10)
@@ -64,6 +83,7 @@ async def _run_verification_background(
                 rep.acoustic_distress_level = verification_result.get("acoustic_distress_level")
                 rep.ai_verification_report = verification_result
                 rep.rubric_breakdown = verification_result.get("rubric_breakdown")
+                rep.anomaly_flags = (verification_result.get("rubric_breakdown") or {}).get("flags", [])
 
                 if not rep.parsed_text and verification_result.get("parsed_text"):
                     rep.parsed_text = verification_result["parsed_text"]
@@ -73,7 +93,6 @@ async def _run_verification_background(
                 primary_hazard = detected_hazards[0] if detected_hazards else "general_emergency"
 
                 existing_ext = rep.ai_extraction or {}
-                # Ensure translations and situation summaries are never overwritten with None
                 eng_trans = verification_result.get("english_translation") or existing_ext.get("english_translation")
                 urdu_trans = verification_result.get("urdu_translation") or existing_ext.get("urdu_translation")
                 sit_summary = verification_result.get("situation_summary") or existing_ext.get("situation_summary")
@@ -97,28 +116,33 @@ async def _run_verification_background(
                     "speaker_distress_level": rep.acoustic_distress_level,
                     "verification_score": v_score,
                     "vulnerability_level": v_level,
+                    "triage_tier": triage_tier,
+                    "cluster_density_factor": rep.cluster_density_factor,
                 }
                 rep.ai_extraction = {**existing_ext, **verif_ext}
 
-                if is_verified:
+                # ── Three-Tier Routing Decision ──
+                # 80 – 100: VERIFIED_EMERGENCY -> Direct route to active coordinator queue with immediate dispatch advice
+                # 35 – 79:  SUSPECTED_UNCONFIRMED -> Routed to Rapid Callback Queue (Automated SMS/IVR verification)
+                # 0  – 34:  FLAGGED_OR_PRANK -> Quarantined to coordinator audit view (completely hidden from critical dispatch queue)
+                if triage_tier == "VERIFIED_EMERGENCY" or v_score >= 80:
                     rep.status = "verified"
                     rep.relief_status = "verified"
-                    rep.relief_eta_minutes = 25
+                    rep.relief_eta_minutes = 20
                     rep.relief_team_name = "Rescue 1122 Rapid Unit"
-                    rep.urgency_level = ReportService._map_vulnerability_to_urgency_static(v_level)
-                elif v_level == "requires_human_triage":
-                    rep.status = "pending_audit"
-                    rep.urgency_level = "high"
-                elif v_level == "false_or_prank":
+                    rep.urgency_level = "critical"
+                elif triage_tier == "FLAGGED_OR_PRANK" or v_score < 35 or v_level == "false_or_prank":
                     rep.status = "rejected"
                     rep.urgency_level = "low"
-                else:
-                    rep.status = "pending"
+                else:  # SUSPECTED_UNCONFIRMED
+                    rep.status = "pending_audit"
+                    rep.relief_status = "pending"
                     rep.urgency_level = ReportService._map_vulnerability_to_urgency_static(v_level)
+                    rep.callback_status = "pending"
 
                 final_status = rep.status
                 await session.commit()
-                print(f"[ReportService] Report {report_id} verified: score={v_score}, level={v_level}, status={final_status}")
+                print(f"[ReportService] Report {report_id} 5-layer verified: score={v_score}, tier={triage_tier}, status={final_status}")
 
         # Broadcast update to connected clients via WebSocket
         try:
@@ -182,6 +206,9 @@ class ReportService:
         user_id: Optional[uuid.UUID] = None,
         audio_bytes: Optional[bytes] = None,
         audio_mime_type: str = "audio/webm",
+        image_bytes: Optional[bytes] = None,
+        video_bytes: Optional[bytes] = None,
+        client_ip: Optional[str] = None,
     ) -> Report:
         """
         Fast-Path Dispatch (<300ms):
@@ -189,16 +216,25 @@ class ReportService:
           2. Resolves coordinates & location name.
           3. Persists report immediately with status='pending_audit'.
           4. Alerts coordinators via WebSocket.
-          5. Launches background AI verification task asynchronously and returns report immediately.
+          5. Launches background 5-layer verification task asynchronously and returns report immediately.
         """
         # 1. Text & hazard aggregation
         text_input = (report_data.text_note or report_data.text_input or "").strip()
-        # If user did not provide text description, synthesize a clean sentence from selected hazards
-        if not text_input and report_data.quick_buttons:
-            clean_btn_names = [b.replace('_', ' ').title() for b in report_data.quick_buttons]
-            text_input = f"Reported emergency: {', '.join(clean_btn_names)}"
-
         hazards = list(report_data.hazards or report_data.hazard_types or [])
+
+        # If user did not provide text description, synthesize a clean sentence from selected hazards or location
+        if not text_input:
+            items_to_describe = []
+            if hazards:
+                items_to_describe.extend([h.replace('_', ' ').title() for h in hazards])
+            if report_data.quick_buttons:
+                items_to_describe.extend([b.replace('_', ' ').title() for b in report_data.quick_buttons])
+            if items_to_describe:
+                text_input = f"Reported emergency: {', '.join(items_to_describe)}"
+            elif report_data.address_text:
+                text_input = f"Emergency SOS signal broadcast from {report_data.address_text}"
+            else:
+                text_input = "Emergency SOS distress signal received."
 
         # 2. Location determination
         gps_tuple: Optional[Tuple[float, float]] = None
@@ -242,9 +278,16 @@ class ReportService:
             input_type=report_data.input_type or ("voice" if audio_bytes else "text"),
             audio_url=report_data.audio_blob_url,
             confidence_score=0.5,
-            urgency_level="high",  # Humanitarian baseline: immediate high urgency
+            urgency_level="critical",  # Humanitarian baseline: immediate critical urgency for citizen SOS
             verification_score=0,
-            vulnerability_level="requires_human_triage",
+            vulnerability_level="critical",
+            triage_tier="suspected_unconfirmed",
+            cluster_density_factor=0.0,
+            device_integrity_score=100,
+            media_forensics_score=100,
+            semantic_consistency_score=100,
+            tamper_penalty=0,
+            callback_status="pending",
             semantic_score=0,
             consistency_score=0,
             grounding_score=10,
@@ -253,10 +296,12 @@ class ReportService:
             grounding_label="unreported_localized_incident",
             ai_verification_report={
                 "status": "pending_audit",
-                "message": "AI voice and location verification executing in background",
+                "message": "AI 5-layer emergency verification executing in background",
             },
             ai_extraction=initial_ext,
-            media_source="voice_direct",
+            media_source=report_data.media_source or "voice_direct",
+            capture_nonce=report_data.capture_nonce,
+            capture_timestamp=report_data.capture_timestamp,
             gps_location=gps_wkt,
             extracted_location_name=loc_name,
             anomaly_flags=[],
@@ -289,16 +334,22 @@ class ReportService:
             elif len(audio_bytes) < 4000:
                 audio_too_short = True
 
-        has_valid_text = len(text_input.strip()) >= 8
-        is_spam_or_empty = (not has_valid_text) and (not is_audio_present or audio_too_short)
+        raw_user_text = (report_data.text_note or report_data.text_input or "").strip()
+        has_valid_audio = is_audio_present and not audio_too_short
+        has_valid_text = len(raw_user_text) >= 8
+        has_explicit_hazards = bool(hazards) or bool(report_data.quick_buttons)
+
+        is_spam_or_empty = (not has_valid_audio) and (not has_valid_text) and (not has_explicit_hazards)
 
         if is_spam_or_empty:
             report.status = "rejected"
             report.vulnerability_level = "false_or_prank"
+            report.triage_tier = "flagged_or_prank"
             report.urgency_level = "low"
             report.verification_score = 0
             report.ai_verification_report = {
                 "status": "rejected",
+                "triage_tier": "FLAGGED_OR_PRANK",
                 "reason": "Pre-Gemini discard: audio duration <1.5s and text <8 characters (spam/empty signal)",
             }
             await self.session.commit()
@@ -334,6 +385,7 @@ class ReportService:
                     data={
                         "report_id": str(report.id),
                         "status": "pending_audit",
+                        "triage_tier": report.triage_tier,
                         "location_name": loc_name,
                         "raw_input": text_input,
                         "audio_url": report.audio_url,
@@ -344,7 +396,8 @@ class ReportService:
         except Exception as ws_err:
             print(f"[ReportService] Coordinator initial alert warning: {ws_err}")
 
-        # 5. Launch Background Verification Task (Phase 1-4)
+        # 5. Launch Background 5-Layer Verification Task
+        dev_dict = report_data.device_info.model_dump() if report_data.device_info else None
         asyncio.create_task(
             _run_verification_background(
                 report_id=report.id,
@@ -354,8 +407,16 @@ class ReportService:
                 audio_bytes=audio_bytes,
                 audio_mime_type=audio_mime_type,
                 quick_hazard_tags=hazards,
+                device_info=dev_dict,
+                client_ip=client_ip,
+                image_bytes=image_bytes,
+                video_bytes=video_bytes,
+                capture_nonce=report_data.capture_nonce,
             )
         )
+
+        # Return persisted report immediately
+        return report
 
         # Return persisted report immediately
         return report

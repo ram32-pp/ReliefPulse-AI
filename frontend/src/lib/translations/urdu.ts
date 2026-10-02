@@ -78,9 +78,9 @@ export const urdu: Record<TranslationKey, string> = {
 
   // Voice Recorder
   voice_recording_title: "صوتی SOS ریکارڈر",
-  voice_recording_sub: "کسی بھی زبان میں ہنگامی صورتحال بول کر بتائیں",
+  voice_recording_sub: "ہنگامی صورتحال بول کر بتائیں",
   tap_to_speak: "بولنے کے لیے دبائیں",
-  speak_any_language: "کسی بھی زبان میں بولیں (اردو، انگلش، پشتو، سندھی...)",
+  speak_any_language: "بولیں (اردو، انگلش، پشتو، سندھی...)",
   voice_recorded: "صوتی پیغام ریکارڈ ہو کر منسلک ہو گیا!",
   tap_mic_start: "ریکارڈنگ کے لیے مائیک کا بٹن دبائیں۔",
   listening: "سن رہا ہے...",
@@ -90,7 +90,7 @@ export const urdu: Record<TranslationKey, string> = {
   sos_report_header: "ہنگامی SOS رپورٹ بھیجیں",
   sos_signal_broadcast: "ہنگامی سگنل نشریات",
   what_happened: "کیا ہوا؟ ہنگامی صورتحال بتائیں...",
-  what_happened_sub: "اردو، پشتو، سندھی یا کسی بھی زبان میں بولیں۔ AI فوری جائزہ لے گا۔",
+  what_happened_sub: "اردو، پشتو، سندھی میں بولیں۔ AI فوری جائزہ لے گا۔",
   or_type: "یا لکھیں",
   type_here: "تفصیلات لکھیں جیسے پانی کی سطح، پھنسے افراد، طبی امداد...",
   write_incident_details: "واقعہ کی تفصیلات لکھیں",

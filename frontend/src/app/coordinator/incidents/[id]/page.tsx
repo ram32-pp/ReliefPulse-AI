@@ -87,123 +87,14 @@ export default function IncidentDetail() {
     setError(null);
     try {
       const data = await fetchIncidentDetail(id);
-      setIncident(data);
-    } catch (err: any) {
-      console.warn('Incident fetch API fallback:', err);
-      // Fallback for mock IDs if network or backend route is unreachable
-      const clean = id.toUpperCase();
-      if (clean === 'C-492') {
-        setIncident({
-          incident_id: 'C-492',
-          incident_code: 'C-492',
-          severity: 'high',
-          hazard_type: 'fire',
-          location: { name: 'Gulshan Block 13-D, Main Commercial', centroid: { lat: 24.9312, lng: 66.995 } },
-          total_reports: 8,
-          total_individuals: 18,
-          medical_risks: [{ type: 'injured', count: 3 }, { type: 'smoke_inhalation', count: 4 }],
-          vulnerable_groups: ['elderly', 'children'],
-          cluster_confidence: 0.88,
-          ai_summary:
-            'Electrical short circuit triggered active blaze in 2-story residential apartments. Heavy smoke spreading to stairwells with residents trapped on upper floors.',
-          ai_reasoning: [
-            'Electrical short circuit spread to residential block',
-            'Smoke inhalation hazard confirmed by 4 distress voice calls',
-            '8 corroborating reports within 200m radius',
-          ],
-          caller_statement:
-            'Gulshan Block 13-D mein building mein aag lag gayi hai, stairwell dhuen se bhar chuka hai, log chat par hain madad bhejo.',
-          english_translation:
-            'Fire has broken out in a residential building at Gulshan Block 13-D. The stairwell is filled with dense smoke and people are stranded on the roof. Dispatch fire rescue immediately.',
-          urdu_translation:
-            'گلشن بلاک 13-ڈی میں عمارت میں آگ لگ گئی ہے، سیڑھیاں دھوئیں سے بھر چکی ہیں، لوگ چھت پر ہیں برائے مہربانی فوری فائر بریگیڈ بھیجیں۔',
-          relief_status: 'open',
-          relief_team_name: 'Karachi Fire Department Unit #9',
-          relief_eta_minutes: 12,
-        });
-      } else if (clean === 'C-493') {
-        setIncident({
-          incident_id: 'C-493',
-          incident_code: 'C-493',
-          severity: 'medium',
-          hazard_type: 'structural_collapse',
-          location: { name: 'Lyari Old Town, Street 12', centroid: { lat: 24.8055, lng: 67.0423 } },
-          total_reports: 5,
-          total_individuals: 12,
-          medical_risks: [{ type: 'trapped', count: 2 }, { type: 'injured', count: 1 }],
-          vulnerable_groups: ['children'],
-          cluster_confidence: 0.76,
-          ai_summary:
-            'Partial boundary wall collapse after heavy rain in Lyari Old Town. 2 individuals trapped under light debris calling for extrication.',
-          ai_reasoning: [
-            'Partial wall collapse on ground floor alleyway after rain',
-            '2 residents trapped under debris; conscious and calling for extrication',
-          ],
-          caller_statement:
-            'Lyari old town street 12 mein makan ki deewar gir gayi hai. 2 log malbay ke neeche phanse hain, fori rescue team bhejein.',
-          english_translation:
-            'A residential boundary wall has collapsed in Lyari Old Town Street 12. 2 individuals are trapped under debris. Send urban search and rescue team.',
-          urdu_translation:
-            'لیاری اولڈ ٹاؤن اسٹریٹ 12 میں مکان کی دیوار گر گئی ہے۔ 2 افراد ملبے تلے پھنسے ہیں، فوری ریسکیو ٹیم روانہ کریں۔',
-          relief_status: 'open',
-          relief_team_name: 'Urban Search & Rescue Squad #2',
-          relief_eta_minutes: 18,
-        });
-      } else if (clean === 'C-491') {
-        setIncident({
-          incident_id: 'C-491',
-          incident_code: 'C-491',
-          severity: 'critical',
-          hazard_type: 'flood',
-          location: { name: 'Korangi Sector 4, Street 7-B', centroid: { lat: 24.8307, lng: 67.0811 } },
-          total_reports: 14,
-          total_individuals: 42,
-          medical_risks: [{ type: 'infant', count: 1 }, { type: 'elderly', count: 2 }],
-          vulnerable_groups: ['infant', 'elderly', 'diabetic patient'],
-          cluster_confidence: 0.94,
-          ai_summary:
-            'Severe flash flood inundation inside ground floor homes. 42 individuals stranded across multiple residences with rising water levels.',
-          ai_reasoning: [
-            'Flash flood inundation in low-lying residential sector',
-            'Multiple vulnerable individuals (infant, elderly) require immediate boat evacuation',
-          ],
-          caller_statement:
-            'Bhai sahab, Korangi sector 4 mein pani ghar ke andar aa gaya. 4 log phanse hain jismein ek chota bacha hai. Jaldi bhejein please.',
-          english_translation:
-            'Brothers, floodwater has entered inside houses in Korangi sector 4. 4 people are trapped including an infant. Please dispatch rescue boats immediately.',
-          urdu_translation:
-            'بھائی صاحب، کورنگی سیکٹر 4 میں پانی گھر کے اندر آ گیا ہے۔ 4 افراد پھنسے ہیں جن میں ایک چھوٹا بچہ ہے۔ برائے مہربانی فوری امداد بھیجیں۔',
-          relief_status: 'open',
-          relief_team_name: 'Rescue 1122 Rapid Boat Unit #4',
-          relief_eta_minutes: 15,
-        });
+      if (data && (data.incident_id || data.incident_code)) {
+        setIncident(data);
       } else {
-        // Dynamic fallback matching specific incident ID
-        const displayCode = id.startsWith('C-') || id.startsWith('RP-') ? id : `RP-${id.slice(0, 4).toUpperCase()}`;
-        setIncident({
-          incident_id: id,
-          incident_code: displayCode,
-          severity: 'high',
-          hazard_type: 'general_emergency',
-          location: { name: `Emergency Site (${displayCode})`, centroid: { lat: 24.8607, lng: 67.0011 } },
-          total_reports: 1,
-          total_individuals: 1,
-          medical_risks: [],
-          vulnerable_groups: [],
-          cluster_confidence: 0.85,
-          ai_summary: `Emergency distress call registered for signal ${displayCode}. Dispatchers are actively monitoring response.`,
-          ai_reasoning: [
-            `Distress report registered with code ${displayCode}`,
-            'Multi-source GPS telemetry authenticated',
-          ],
-          caller_statement: `Emergency SOS signal registered from site ${displayCode}. Rescue dispatch requested.`,
-          english_translation: `Emergency relief assistance requested for incident ${displayCode}.`,
-          urdu_translation: `ہنگامی امداد کی درخواست موصول ہوئی ہے۔`,
-          relief_status: 'open',
-          relief_team_name: 'Rescue 1122 Rapid Unit',
-          relief_eta_minutes: 20,
-        });
+        setError(`Emergency incident #${id} not found.`);
       }
+    } catch (err: any) {
+      console.warn('Incident fetch API error:', err);
+      setError(err?.message || `Emergency incident #${id} not found.`);
     } finally {
       setIsLoading(false);
     }
@@ -299,6 +190,24 @@ export default function IncidentDetail() {
     );
   }
 
+  if (error || !incident) {
+    return (
+      <div className="min-h-screen bg-[#060913] text-warm-white flex flex-col items-center justify-center p-6 text-center">
+        <AlertTriangle className="text-amber-400 mb-3" size={36} />
+        <h2 className="text-lg font-bold text-white mb-1">Emergency Signal Not Found</h2>
+        <p className="text-xs text-slate-400 max-w-sm mb-5 leading-relaxed">
+          {error || `Incident #${id} does not exist or may have been cleared or resolved.`}
+        </p>
+        <button
+          onClick={() => router.push('/coordinator')}
+          className="px-4 py-2 rounded-xl bg-sky-blue text-slate-950 font-bold text-xs hover:bg-sky-400 transition-all cursor-pointer"
+        >
+          Return to Coordinator Queue
+        </button>
+      </div>
+    );
+  }
+
   const currentStatus = (incident?.relief_status || 'open').toLowerCase();
   const severity = (incident?.severity || 'critical').toLowerCase();
   const hazardType = incident?.hazard_type || 'flood';
@@ -356,7 +265,7 @@ export default function IncidentDetail() {
                 {severity} EMERGENCY
               </span>
 
-              <span className="font-mono text-sky-blue text-xs font-bold bg-sky-blue/10 px-2.5 py-1 rounded-md border border-sky-blue/30">
+              <span className="font-mono tabular-nums text-sky-blue text-xs font-bold bg-sky-blue/10 px-2.5 py-1 rounded-md border border-sky-blue/30">
                 {incident?.incident_code || id}
               </span>
 
@@ -374,7 +283,7 @@ export default function IncidentDetail() {
             </h1>
 
             <div className="flex items-center gap-3 flex-wrap mt-2">
-              <p className="text-slate-400 text-xs font-mono flex items-center gap-1.5">
+              <p className="text-slate-400 text-xs font-mono tabular-nums flex items-center gap-1.5">
                 <MapPin size={14} className="text-pulse-red" />
                 GPS: {lat.toFixed(4)}° N, {lng.toFixed(4)}° E
               </p>
@@ -398,7 +307,7 @@ export default function IncidentDetail() {
               <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-mono">
                 Verification Confidence
               </span>
-              <span className="text-2xl font-black text-relief-green font-mono">
+              <span className="text-2xl font-black text-relief-green font-mono tabular-nums">
                 {Math.round((incident?.cluster_confidence || 0.92) * 100)}%
               </span>
             </div>
@@ -513,11 +422,11 @@ export default function IncidentDetail() {
                   <span className="text-slate-400 text-[10px] uppercase block font-mono">
                     Individuals at Risk
                   </span>
-                  <span className="text-lg font-bold text-warm-white font-mono">
+                  <span className="text-lg font-bold text-warm-white font-mono tabular-nums">
                     {incident?.total_individuals ?? 1} people
                   </span>
                   <span className="text-[10px] text-slate-400 block mt-0.5">
-                    across {incident?.total_reports ?? 1} verified reports
+                    across <strong className="font-mono tabular-nums">{incident?.total_reports ?? 1}</strong> verified reports
                   </span>
                 </div>
 

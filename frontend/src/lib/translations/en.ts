@@ -76,9 +76,9 @@ export const en = {
 
   // Voice Recorder
   voice_recording_title: "Voice SOS Recorder",
-  voice_recording_sub: "Speak emergency description in any language",
+  voice_recording_sub: "Speak emergency description",
   tap_to_speak: "TAP TO SPEAK",
-  speak_any_language: "Speak in any language (Urdu, English, Pashto, Sindhi...)",
+  speak_any_language: "Speak emergency details (Urdu, English, Pashto, Sindhi...)",
   voice_recorded: "Voice note recorded and attached!",
   tap_mic_start: "Tap mic button to start voice recording.",
   listening: "Listening...",
@@ -88,7 +88,7 @@ export const en = {
   sos_report_header: "Send SOS Report",
   sos_signal_broadcast: "EMERGENCY SIGNAL BROADCAST",
   what_happened: "What happened? Tell us...",
-  what_happened_sub: "Speak in any language (Urdu, English, Pashto, Sindhi, etc.). AI will analyze urgency.",
+  what_happened_sub: "Speak details (Urdu, English, Pashto, Sindhi, etc.). AI will analyze urgency.",
   or_type: "or type",
   type_here: "Type details like water level, trapped people, medical need...",
   write_incident_details: "Write Incident Details",

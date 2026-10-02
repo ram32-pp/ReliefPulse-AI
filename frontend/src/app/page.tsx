@@ -113,7 +113,7 @@ export default function Home() {
         </div>
 
         {/* Live GPS Telemetry Pill */}
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-[11px] text-slate-300 font-mono mb-4">
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-[11px] text-slate-300 font-mono tabular-nums mb-4">
           <MapPin size={12} className="text-pulse-red animate-pulse shrink-0" />
           <span className="truncate max-w-[240px] sm:max-w-[320px]">{addressText}</span>
         </div>

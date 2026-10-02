@@ -31,6 +31,22 @@ interface SearchResult {
   lon: string;
 }
 
+const EMERGENCY_PRESETS: SearchResult[] = [
+  { place_id: 1001, display_name: 'Karachi, Sindh, Pakistan', lat: '24.8607', lon: '67.0011' },
+  { place_id: 1002, display_name: 'Lahore, Punjab, Pakistan', lat: '31.5204', lon: '74.3587' },
+  { place_id: 1003, display_name: 'Islamabad, Capital Territory, Pakistan', lat: '33.6844', lon: '73.0479' },
+  { place_id: 1004, display_name: 'Rawalpindi, Punjab, Pakistan', lat: '33.5651', lon: '73.0169' },
+  { place_id: 1005, display_name: 'Peshawar, Khyber Pakhtunkhwa, Pakistan', lat: '34.0151', lon: '71.5249' },
+  { place_id: 1006, display_name: 'Quetta, Balochistan, Pakistan', lat: '30.1798', lon: '66.9750' },
+  { place_id: 1007, display_name: 'Multan, Punjab, Pakistan', lat: '30.1575', lon: '71.5249' },
+  { place_id: 1008, display_name: 'Faisalabad, Punjab, Pakistan', lat: '31.4504', lon: '73.1350' },
+  { place_id: 1009, display_name: 'Hyderabad, Sindh, Pakistan', lat: '25.3960', lon: '68.3578' },
+  { place_id: 1010, display_name: 'Sukkur, Sindh, Pakistan', lat: '27.7052', lon: '68.8574' },
+  { place_id: 1011, display_name: 'Gwadar, Balochistan, Pakistan', lat: '25.1216', lon: '62.3254' },
+  { place_id: 1012, display_name: 'Gilgit, Gilgit-Baltistan, Pakistan', lat: '35.9221', lon: '74.3087' },
+  { place_id: 1013, display_name: 'Muzaffarabad, Azad Kashmir, Pakistan', lat: '34.3700', lon: '73.4711' },
+];
+
 // Custom Neon Cyber Marker Icon
 const createCustomIcon = () => {
   if (typeof window === 'undefined') return undefined;
@@ -129,63 +145,69 @@ export const MapLocationPicker: React.FC<MapLocationPickerProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Reverse Geocoding via Nominatim
+
+
+  // Reverse Geocoding via internal API proxy (safe from CORS, adblockers, and rate limits)
   const reverseGeocode = async (lat: number, lng: number) => {
     try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`
-      );
+      const res = await fetch(`/api/geocode?lat=${lat}&lon=${lng}`);
       if (res.ok) {
         const data = await res.json();
         const formatted = data.display_name || `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
         setAddress(formatted);
         onLocationSelect(lat, lng, formatted);
-      } else {
-        const fallback = `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`;
-        setAddress(fallback);
-        onLocationSelect(lat, lng, fallback);
+        return;
       }
-    } catch {
-      const fallback = `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`;
-      setAddress(fallback);
-      onLocationSelect(lat, lng, fallback);
+    } catch (err) {
+      console.warn('Reverse geocode fallback:', err);
     }
+    const fallback = `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`;
+    setAddress(fallback);
+    onLocationSelect(lat, lng, fallback);
   };
 
-  // Search Address / Landmark via Nominatim API
+  // Search Address / Landmark via internal geocode API
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!searchQuery.trim()) return;
+    const query = searchQuery.trim();
+    if (!query) return;
 
     setIsSearching(true);
     setShowDropdown(true);
 
     try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-          searchQuery
-        )}&limit=5`
-      );
+      const res = await fetch(`/api/geocode?q=${encodeURIComponent(query)}`);
       if (res.ok) {
-        const data: SearchResult[] = await res.json();
-        setSearchResults(data);
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setSearchResults(data);
+          return;
+        }
       }
     } catch (err) {
-      console.error('Search failed', err);
+      console.warn('Search geocode fallback:', err);
     } finally {
       setIsSearching(false);
     }
+
+    // Client-side fallback if offline or API returned empty/failed
+    const fallbackMatches = EMERGENCY_PRESETS.filter((item) =>
+      item.display_name.toLowerCase().includes(query.toLowerCase())
+    );
+    setSearchResults(fallbackMatches.length > 0 ? fallbackMatches : EMERGENCY_PRESETS.slice(0, 5));
   };
 
   const selectSearchResult = (result: SearchResult) => {
     const lat = parseFloat(result.lat);
     const lng = parseFloat(result.lon);
-    setCenter([lat, lng]);
-    setMarkerPos([lat, lng]);
-    setAddress(result.display_name);
-    setSearchQuery(result.display_name.split(',')[0]);
-    setShowDropdown(false);
-    onLocationSelect(lat, lng, result.display_name);
+    if (!isNaN(lat) && !isNaN(lng)) {
+      setCenter([lat, lng]);
+      setMarkerPos([lat, lng]);
+      setAddress(result.display_name);
+      setSearchQuery(result.display_name.split(',')[0]);
+      setShowDropdown(false);
+      onLocationSelect(lat, lng, result.display_name);
+    }
   };
 
   const handleMapClick = (lat: number, lng: number) => {
@@ -352,7 +374,7 @@ export const MapLocationPicker: React.FC<MapLocationPickerProps> = ({
               <span className="hidden sm:inline">{mapTheme === 'dark' ? t('tactical_dark') : t('street_map')}</span>
             </button>
 
-            <div className="font-mono text-[10px] text-sky-blue bg-sky-blue/10 px-2 py-1 rounded-md border border-sky-blue/20">
+            <div className="font-mono tabular-nums text-[10px] text-sky-blue bg-sky-blue/10 px-2 py-1 rounded-md border border-sky-blue/20">
               {markerPos[0].toFixed(4)}, {markerPos[1].toFixed(4)}
             </div>
           </div>

@@ -155,7 +155,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
                   <Volume2 size={15} className="text-sky-blue" />
                   Voice Distress Recording
                 </span>
-                <span className="text-[11px] font-mono text-slate-400 block mt-0.5">
+                <span className="text-[11px] font-mono tabular-nums text-slate-400 block mt-0.5">
                   {formatTime(playbackTime)} / {formatTime(playbackDuration || duration || 1)}
                 </span>
               </div>
@@ -188,10 +188,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center text-center">
-            <div className="h-[2px] w-48 bg-gradient-to-r from-transparent via-white/25 to-transparent mb-2" />
-            <span className="text-[11px] font-mono text-slate-400">
-              Ultra-low bandwidth • Works during 2G/3G network congestion
-            </span>
+            <div className="h-[2px] w-48 bg-gradient-to-r from-transparent via-white/25 to-transparent" />
           </div>
         )}
       </div>
@@ -235,7 +232,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
           <div className="mt-4 text-center">
             {isRecording ? (
               <div className="flex flex-col items-center">
-                <span className="font-mono text-2xl font-black text-pulse-red tracking-wider animate-pulse">
+                <span className="font-mono tabular-nums text-2xl font-black text-pulse-red tracking-wider animate-pulse">
                   {formatTime(duration)} / 01:00
                 </span>
                 <span className="text-xs text-amber-alert font-bold mt-1 uppercase tracking-wide">

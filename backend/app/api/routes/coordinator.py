@@ -7,6 +7,8 @@ from app.api.schemas import (
     RejectRequest,
     IncidentDetail,
     AdvanceReliefRequest,
+    CallbackRequest,
+    CallbackResponse,
 )
 from app.models.report import Report
 from app.models.incident import Incident
@@ -153,7 +155,12 @@ def _report_to_incident_detail(rep: Report) -> IncidentDetail:
     rep_id_str = str(rep.id)
     display_code = f"RP-{rep_id_str[:4].upper()}"
 
-    conf = rep.confidence_score or (rep.verification_score / 100.0 if rep.verification_score else 0.88)
+    if rep.confidence_score is not None:
+        conf = rep.confidence_score
+    elif rep.verification_score is not None:
+        conf = rep.verification_score / 100.0
+    else:
+        conf = 0.50
 
     raw_flags = rep.anomaly_flags or []
     cleaned_flags = []
@@ -164,6 +171,15 @@ def _report_to_incident_detail(rep: Report) -> IncidentDetail:
             cleaned_flags.append({"flag_type": f, "description": f.replace("_", " ").title(), "severity": "warning"})
         else:
             cleaned_flags.append({"flag_type": "info", "description": str(f), "severity": "info"})
+
+    # 5-Layer verification metadata
+    triage_tier = getattr(rep, "triage_tier", "suspected_unconfirmed") or "suspected_unconfirmed"
+    density_factor = getattr(rep, "cluster_density_factor", 0.0) or 0.0
+    dev_score = getattr(rep, "device_integrity_score", 100) or 100
+    v_score = getattr(rep, "verification_score", 0) or 0
+    t_penalty = getattr(rep, "tamper_penalty", 0) or 0
+    cb_status = getattr(rep, "callback_status", None)
+    breakdown_5l = getattr(rep, "verification_breakdown_5layer", None)
 
     return IncidentDetail(
         incident_id=rep_id_str,
@@ -195,6 +211,13 @@ def _report_to_incident_detail(rep: Report) -> IncidentDetail:
         report_id=rep_id_str,
         input_type=rep.input_type or "voice",
         phone_number=None,
+        triage_tier=triage_tier,
+        cluster_density_factor=float(density_factor),
+        device_integrity_score=int(dev_score),
+        verification_score=int(v_score),
+        tamper_penalty=int(t_penalty),
+        callback_status=cb_status,
+        verification_breakdown_5layer=breakdown_5l,
     )
 
 
@@ -202,17 +225,19 @@ def _report_to_incident_detail(rep: Report) -> IncidentDetail:
 async def get_triage_queue(
     severity: str = Query("all"),
     status: str = Query("open"),
+    triage_tier: str = Query("all"),
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=100),
     session: AsyncSession = Depends(get_db),
 ):
     """
     Fetch the prioritized triage queue for coordinator review.
-    Returns both clustered Incidents and unclustered citizen Reports.
+    Supports 3-tier filtering (verified_emergency, suspected_unconfirmed, flagged_or_prank).
     """
-    # Safely unwrap primitive types if called programmatically
     severity_val = getattr(severity, "default", severity) if not isinstance(severity, str) else severity
     status_val = getattr(status, "default", status) if not isinstance(status, str) else status
+    triage_tier_val = getattr(triage_tier, "default", triage_tier) if not isinstance(triage_tier, str) else triage_tier
+    triage_tier_val = (triage_tier_val or "all").lower().strip()
     page_val = getattr(page, "default", page) if not isinstance(page, int) else page
     per_page_val = getattr(per_page, "default", per_page) if not isinstance(per_page, int) else per_page
 
@@ -294,15 +319,22 @@ async def get_triage_queue(
     rep_stmt = select(Report).where(
         Report.parent_report_id.is_(None)
     )
-    if status_val and status_val != "all":
+    if triage_tier_val in ["flagged_or_prank", "flagged", "prank", "quarantined"]:
+        # Quarantined audit view shows flagged/rejected reports
+        rep_stmt = rep_stmt.where(
+            or_(
+                Report.triage_tier == "flagged_or_prank",
+                Report.status == "rejected",
+                Report.verification_score < 35,
+            )
+        )
+    elif status_val and status_val != "all":
         if status_val == "open":
             rep_stmt = rep_stmt.where(Report.status.notin_(["resolved", "rejected", "false_alarm"]))
         else:
             rep_stmt = rep_stmt.where(Report.status == status_val)
-    else:
-        rep_stmt = rep_stmt.where(Report.status.notin_(["rejected", "false_alarm"]))
 
-    if len(incidents) > 0:
+    if len(incidents) > 0 and triage_tier_val not in ["flagged_or_prank", "flagged"]:
         # If clustered incidents exist, only pull reports not yet assigned to an incident
         rep_stmt = rep_stmt.where(Report.incident_id.is_(None))
 
@@ -314,16 +346,42 @@ async def get_triage_queue(
         detail = _report_to_incident_detail(rep)
         if severity_val != "all" and detail.severity != severity_val:
             continue
+        
+        # Filter by triage_tier_val
+        if triage_tier_val != "all":
+            rep_tier = (detail.triage_tier or "").lower()
+            if triage_tier_val in ["verified_emergency", "verified"]:
+                if rep_tier != "verified_emergency" and (detail.verification_score or 0) < 80:
+                    continue
+            elif triage_tier_val in ["suspected_unconfirmed", "rapid_callback", "suspected"]:
+                if rep_tier != "suspected_unconfirmed" and not (35 <= (detail.verification_score or 0) < 80):
+                    continue
+            elif triage_tier_val in ["flagged_or_prank", "flagged", "prank", "quarantined"]:
+                if rep_tier != "flagged_or_prank" and (detail.verification_score or 0) >= 35 and rep.status != "rejected":
+                    continue
+
         all_details.append(detail)
 
-    # 3. Sort: critical first, then high, medium, low; then newest first
+    # 3. Sort: prioritize fresh/recent emergency reports first, then by severity, then newest first
     severity_rank = {"critical": 0, "high": 1, "medium": 2, "low": 3}
-    all_details.sort(
-        key=lambda x: (
-            severity_rank.get(x.severity, 2),
-            -(x.first_report_at.timestamp() if isinstance(x.first_report_at, datetime) else 0)
-        )
-    )
+    from datetime import timezone
+    now_ts = datetime.now(timezone.utc).timestamp()
+
+    def _triage_sort_key(item: IncidentDetail):
+        item_ts = 0.0
+        if isinstance(item.first_report_at, datetime):
+            if item.first_report_at.tzinfo is None:
+                item_ts = item.first_report_at.replace(tzinfo=timezone.utc).timestamp()
+            else:
+                item_ts = item.first_report_at.timestamp()
+
+        # Reports within the last 6 hours or pending relief are given primary spotlight
+        is_fresh = (now_ts - item_ts) < 21600 or (getattr(item, "relief_status", "") in ["pending", "pending_audit", "open"])
+        fresh_rank = 0 if is_fresh else 1
+        sev_rank = severity_rank.get(str(item.severity).lower(), 1)
+        return (fresh_rank, sev_rank, -item_ts)
+
+    all_details.sort(key=_triage_sort_key)
 
     total = len(all_details)
     start_idx = (page_val - 1) * per_page_val
@@ -449,95 +507,6 @@ async def get_incident_detail(
         matched_rep = rep_code_res.scalars().first()
         if matched_rep:
             return _report_to_incident_detail(matched_rep)
-
-    # 5. Fallback for mock incidents if DB does not yet have them
-    mock_data = {
-        "C-491": IncidentDetail(
-            incident_id="C-491",
-            incident_code="C-491",
-            severity="critical",
-            hazard_type="flood",
-            location={"name": "Korangi Sector 4, Street 7-B", "centroid": {"lat": 24.8307, "lng": 67.0811}},
-            total_reports=14,
-            total_individuals=42,
-            medical_risks=[{"type": "infant", "count": 1}, {"type": "elderly", "count": 2}, {"type": "diabetic", "count": 1}],
-            cluster_confidence=0.94,
-            ai_summary="Severe urban flash flood inundation. Water level reached 4-5 ft inside residential homes with infants and elderly residents trapped on rooftops.",
-            ai_reasoning=[
-                "Infant present → auto-escalation trigger",
-                "14 independent corroborating reports in 150m radius",
-                "Water level rising (3ft → 5ft over 2 hours)",
-            ],
-            anomaly_flags=[],
-            first_report_at=datetime.utcnow(),
-            last_report_at=datetime.utcnow(),
-            gps_text_match={"level": "verified", "confidence": 0.95},
-            caller_transcript="Bhai sahab, Korangi sector 4 mein pani ghar ke andar aa gaya. 4 log phanse hain jismein ek chota bacha hai. Jaldi bhejein please.",
-            caller_statement="Bhai sahab, Korangi sector 4 mein pani ghar ke andar aa gaya. 4 log phanse hain jismein ek chota bacha hai. Jaldi bhejein please.",
-            english_translation="Brothers, floodwater has entered inside houses in Korangi sector 4. 4 people are trapped including an infant. Please dispatch rescue boats immediately.",
-            urdu_translation="بھائی صاحب، کورنگی سیکٹر 4 میں پانی گھر کے اندر آ گیا ہے۔ 4 افراد پھنسے ہیں جن میں ایک چھوٹا بچہ ہے۔ برائے مہربانی فوری امداد بھیجیں۔",
-            relief_status="open",
-            relief_team_name="Rescue 1122 Rapid Boat Unit #4",
-            relief_eta_minutes=15,
-        ),
-        "C-492": IncidentDetail(
-            incident_id="C-492",
-            incident_code="C-492",
-            severity="high",
-            hazard_type="fire",
-            location={"name": "Gulshan Block 13-D, Main Commercial", "centroid": {"lat": 24.9312, "lng": 66.9950}},
-            total_reports=8,
-            total_individuals=18,
-            medical_risks=[{"type": "injured", "count": 3}, {"type": "smoke_inhalation", "count": 4}],
-            cluster_confidence=0.88,
-            ai_summary="Electrical transformer short circuit triggered active blaze across 2-story residential apartments. Heavy black smoke spreading to stairwells.",
-            ai_reasoning=[
-                "Electrical short circuit spread to residential block",
-                "Smoke inhalation hazard confirmed by 4 voice calls",
-                "8 corroborating reports within 200m radius",
-            ],
-            anomaly_flags=[],
-            first_report_at=datetime.utcnow(),
-            last_report_at=datetime.utcnow(),
-            gps_text_match={"level": "verified", "confidence": 0.92},
-            caller_transcript="Gulshan Block 13-D mein building mein aag lag gayi hai, stairwell dhuen se bhar chuka hai, log chat par hain madad bhejo.",
-            caller_statement="Gulshan Block 13-D mein building mein aag lag gayi hai, stairwell dhuen se bhar chuka hai, log chat par hain madad bhejo.",
-            english_translation="Fire has broken out in a residential building at Gulshan Block 13-D. The stairwell is filled with dense smoke and people are stranded on the roof. Dispatch fire rescue immediately.",
-            urdu_translation="گلشن بلاک 13-ڈی میں عمارت میں آگ لگ گئی ہے، سیڑھیاں دھوئیں سے بھر چکی ہیں، لوگ چھت پر ہیں برائے مہربانی فوری فائر بریگیڈ بھیجیں۔",
-            relief_status="open",
-            relief_team_name="Karachi Fire Department Unit #9",
-            relief_eta_minutes=12,
-        ),
-        "C-493": IncidentDetail(
-            incident_id="C-493",
-            incident_code="C-493",
-            severity="medium",
-            hazard_type="structural_collapse",
-            location={"name": "Lyari Old Town, Street 12", "centroid": {"lat": 24.8055, "lng": 67.0423}},
-            total_reports=5,
-            total_individuals=12,
-            medical_risks=[{"type": "trapped", "count": 2}, {"type": "injured", "count": 1}],
-            cluster_confidence=0.76,
-            ai_summary="Partial boundary wall collapse after heavy rain in Lyari Old Town. 2 individuals trapped under light debris calling for extrication.",
-            ai_reasoning=[
-                "Partial wall collapse on ground floor alleyway after heavy rain",
-                "2 residents trapped under debris; conscious and calling for extrication",
-            ],
-            anomaly_flags=[],
-            first_report_at=datetime.utcnow(),
-            last_report_at=datetime.utcnow(),
-            gps_text_match={"level": "verified", "confidence": 0.89},
-            caller_transcript="Lyari old town street 12 mein makan ki deewar gir gayi hai. 2 log malbay ke neeche phanse hain, fori rescue team bhejein.",
-            caller_statement="Lyari old town street 12 mein makan ki deewar gir gayi hai. 2 log malbay ke neeche phanse hain, fori rescue team bhejein.",
-            english_translation="A residential boundary wall has collapsed in Lyari Old Town Street 12. 2 individuals are trapped under debris. Send urban search and rescue team.",
-            urdu_translation="لیاری اولڈ ٹاؤن اسٹریٹ 12 میں مکان کی دیوار گر گئی ہے۔ 2 افراد ملبے تلے پھنسے ہیں، فوری ریسکیو ٹیم روانہ کریں۔",
-            relief_status="open",
-            relief_team_name="Urban Search & Rescue Squad #2",
-            relief_eta_minutes=18,
-        ),
-    }
-    if clean_id in mock_data:
-        return mock_data[clean_id]
 
     raise HTTPException(status_code=404, detail=f"Incident or Report '{incident_id}' not found")
 
@@ -850,3 +819,80 @@ async def advance_relief(
         "eta_minutes": req.rescue_eta_minutes,
         "updated_reports_count": 0,
     }
+
+
+@router.post("/trigger-callback", response_model=CallbackResponse)
+async def trigger_rapid_callback(
+    req: CallbackRequest,
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Layer 5 Rapid Callback Queue Action:
+    Trigger automated zero-friction verification callback (SMS/IVR) for SUSPECTED_UNCONFIRMED reports.
+    """
+    target_id_raw = req.report_id or req.incident_id
+    if not target_id_raw:
+        raise HTTPException(status_code=400, detail="Missing report_id or incident_id in callback request")
+
+    rep = None
+    try:
+        val_uuid = uuid.UUID(target_id_raw)
+        rep = await session.get(Report, val_uuid)
+    except Exception:
+        pass
+
+    if not rep and str(target_id_raw).startswith("RP-"):
+        code = str(target_id_raw).replace("RP-", "").strip().lower()
+        from sqlalchemy import String, cast
+        stmt = select(Report).where(
+            or_(
+                cast(Report.id, String).ilike(f"{code}%"),
+                cast(Report.id, String).ilike(f"%{code}%"),
+            )
+        )
+        res = await session.execute(stmt)
+        rep = res.scalars().first()
+
+    if not rep:
+        raise HTTPException(status_code=404, detail=f"Report '{target_id_raw}' not found for rapid callback")
+
+    phone_to_call = req.phone_number or getattr(rep, "contact_phone", None) or "+923001234567"
+    verification_code = str(rep.id)[:4].upper()
+    sms_body = (
+        req.custom_message or 
+        f"ReliefPulse Emergency Alert [RP-{verification_code}]: Please confirm your emergency distress report by replying 'YES' or pressing 1."
+    )
+
+    from app.services.sms_service import sms_service
+    await sms_service.send_sms(phone_to_call, sms_body)
+
+    rep.callback_status = "triggered"
+    flags = list(rep.anomaly_flags or [])
+    if "rapid_callback_sms_triggered" not in flags:
+        flags.append("rapid_callback_sms_triggered")
+    rep.anomaly_flags = flags
+    await session.commit()
+
+    # Broadcast WebSocket update
+    try:
+        from app.api.routes.websocket import broadcast_report_update
+        await broadcast_report_update(
+            report_id=str(rep.id),
+            event_type="report_callback_triggered",
+            data={
+                "report_id": str(rep.id),
+                "callback_status": "triggered",
+                "phone_number": phone_to_call,
+                "triage_tier": getattr(rep, "triage_tier", "suspected_unconfirmed"),
+            },
+        )
+    except Exception as ws_err:
+        print(f"[Coordinator] Callback WebSocket broadcast error: {ws_err}")
+
+    return CallbackResponse(
+        status="triggered",
+        report_id=str(rep.id),
+        phone_number=phone_to_call,
+        callback_status="triggered",
+        message=f"Automated verification callback successfully dispatched to {phone_to_call} for report RP-{verification_code}.",
+    )

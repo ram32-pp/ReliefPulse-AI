@@ -28,6 +28,7 @@ from app.ai.scoring_engine import scoring_engine, DeterministicScoreResult
 from app.db.database import async_session_maker
 
 
+
 # ── Strict Pydantic Schema for Gemini Structured Extraction ──────
 class VoiceTextVerificationExtraction(BaseModel):
     transcript: str = Field(default="", description="Verbatim transcription of the voice note or cleaned text")
@@ -59,12 +60,13 @@ def _haversine_distance_meters(lat1: float, lon1: float, lat2: float, lon2: floa
 
 class EmergencyVerificationPipeline:
     """
-    Asynchronous 4-Phase Voice + Text + Location Verification Pipeline.
-    
-    Phase 1 & 2: Audio Ingestion, Acoustic Distress Analysis & Cross-Modal Consistency
-    Phase 3: Asymmetric Location & Environmental Grounding (USGS + Weather + Google Search)
-    Phase 4: Spatiotemporal Cluster Corroboration (500m / 45min radius)
-    Scoring: Pure Deterministic Rubric Scoring Engine (0-100)
+    Asynchronous 5-Layer Emergency Verification Pipeline.
+
+    Layer 1: Hardware & Network Attestation (Play Integrity / DeviceCheck / Non-VPN IP-GPS match)
+    Layer 2: Spatiotemporal Multi-Witness Consensus (500m / 15m radius, Cluster Density Cd = ln(1 + N_unique))
+    Layer 3: Visual & Media Forensics Engine (pHash archive dedup, EXIF lens noise, diffusion AI detection)
+    Layer 4: Multi-Modal Semantic Consistency (Spectrogram energy vs. transcript, DEM topographic elevation sanity)
+    Layer 5: Bayesian Risk & Uncertainty Classifier (Three-Tier Routing: VERIFIED_EMERGENCY, SUSPECTED_UNCONFIRMED, FLAGGED_OR_PRANK)
     """
 
     def __init__(self):
@@ -87,9 +89,14 @@ class EmergencyVerificationPipeline:
         audio_transcript: Optional[str] = None,
         hazard_tags: Optional[List[str]] = None,
         report_id: Optional[Any] = None,
+        device_info: Optional[Dict[str, Any]] = None,
+        client_ip: Optional[str] = None,
+        image_bytes: Optional[bytes] = None,
+        video_bytes: Optional[bytes] = None,
+        capture_nonce: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Execute the complete parallel verification pipeline with fail-open timeout protection.
+        Execute the complete parallel 5-layer verification pipeline with fail-open timeout protection.
         """
         try:
             return await asyncio.wait_for(
@@ -102,6 +109,11 @@ class EmergencyVerificationPipeline:
                     audio_transcript=audio_transcript,
                     hazard_tags=hazard_tags,
                     report_id=report_id,
+                    device_info=device_info,
+                    client_ip=client_ip,
+                    image_bytes=image_bytes,
+                    video_bytes=video_bytes,
+                    capture_nonce=capture_nonce,
                 ),
                 timeout=self.timeout,
             )
@@ -122,13 +134,21 @@ class EmergencyVerificationPipeline:
         audio_transcript: Optional[str],
         hazard_tags: Optional[List[str]],
         report_id: Optional[Any],
+        device_info: Optional[Dict[str, Any]] = None,
+        client_ip: Optional[str] = None,
+        image_bytes: Optional[bytes] = None,
+        video_bytes: Optional[bytes] = None,
+        capture_nonce: Optional[str] = None,
     ) -> Dict[str, Any]:
         hazard_tags = hazard_tags or []
         hazard_context = " ".join(hazard_tags)
         if text_message:
             hazard_context = f"{hazard_context} {text_message}".strip()
 
-        # Run Phase 1&2 (Voice/Text Extraction), Phase 3 (Grounding), and Phase 4 (Clustering) in parallel
+        lat = gps_coords[0] if gps_coords else None
+        lng = gps_coords[1] if gps_coords else None
+
+        # ── Run all 5 Layers + LLM Extraction concurrently ──
         extraction_task = self._extract_voice_and_text(
             audio_bytes=audio_bytes,
             audio_mime_type=audio_mime_type,
@@ -137,40 +157,91 @@ class EmergencyVerificationPipeline:
             hazard_tags=hazard_tags,
             location_name=location_name,
         )
+        from app.services.hardware_attestation_service import hardware_attestation_service
+        from app.services.swarm_consensus_service import swarm_consensus_service
+        from app.services.media_forensics_service import media_forensics_service
+        from app.services.semantic_consistency_service import semantic_consistency_service
+
         grounding_task = grounding_engine.run_grounding(
             location_name=location_name,
             gps_coords=gps_coords,
             hazard_context=hazard_context,
         )
-        clustering_task = self._check_spatiotemporal_cluster(
+        clustering_task = swarm_consensus_service.evaluate_spatiotemporal_consensus(
+            lat=lat,
+            lng=lng,
+            radius_meters=500.0,
+            time_window_minutes=15,
+            exclude_report_id=report_id,
+        )
+        hardware_task = asyncio.to_thread(
+            hardware_attestation_service.evaluate_hardware_and_network,
+            device_info=device_info,
+            client_ip=client_ip,
+            reported_lat=lat,
+            reported_lng=lng,
+        )
+        visual_task = media_forensics_service.run_full_forensics(
+            image_bytes=image_bytes,
+            video_bytes=video_bytes,
+            device_lat=lat,
+            device_lng=lng,
+            nonce_validated=bool(capture_nonce),
+        )
+        semantic_task = semantic_consistency_service.evaluate_multimodal_consistency(
+            audio_bytes=audio_bytes,
+            audio_mime_type=audio_mime_type,
+            claimed_transcript=text_message or audio_transcript or "",
+            claimed_hazards=hazard_tags,
             gps_coords=gps_coords,
-            hazard_tags=hazard_tags,
-            report_id=report_id,
         )
 
-        extraction, grounding_res, cluster_info = await asyncio.gather(
-            extraction_task, grounding_task, clustering_task, return_exceptions=False
+        extraction, grounding_res, cluster_info, hw_info, visual_info, sem_info = await asyncio.gather(
+            extraction_task, grounding_task, clustering_task, hardware_task, visual_task, semantic_task, return_exceptions=False
         )
 
         # ── Phase 3 Asymmetric Grounding Evaluation ──
         is_grounded = grounding_res.grounding_boost > 0 or grounding_res.sources_matched > 0
         grounding_status = "authoritative_match" if is_grounded else "unreported_localized_incident"
 
-        # ── Phase 4 Spatiotemporal Clustering Evaluation ──
+        # ── Layer 2 Swarm Consensus Evaluation ──
         is_cluster_corroborated = cluster_info.get("corroborated", False)
-        corroborating_count = cluster_info.get("count", 0)
+        corroborating_count = cluster_info.get("unique_devices_count", 0)
         cluster_id = cluster_info.get("cluster_id")
+        cluster_density_factor = cluster_info.get("cluster_density_factor", 0.0)
+        cluster_bonus = cluster_info.get("cluster_bonus", 0.0)
+
+        # ── Layer 1 Hardware & Network Attestation ──
+        is_emulator = hw_info.get("is_emulator", False)
+        is_vpn_or_tor = hw_info.get("is_vpn_or_tor", False)
+        device_attestation_passed = hw_info.get("device_attestation_passed", True)
+        ip_gps_distance_km = hw_info.get("ip_gps_distance_km")
+
+        # ── Layer 3 Visual & Media Forensics ──
+        is_recycled_archive = visual_info.get("is_recycled_archive", False)
+        is_diffusion_generated = visual_info.get("is_diffusion_generated", False)
+
+        # ── Layer 4 Semantic & DEM Consistency ──
+        elevation_anomaly = sem_info.get("elevation_anomaly", False)
 
         # Check silent audio / empty input
         has_text = bool((text_message and text_message.strip()) or (extraction.transcript and extraction.transcript.strip()))
         is_silent = bool(audio_bytes and len(audio_bytes) < 100) or (extraction.speaker_distress_level == "inaudible" and not extraction.transcript)
 
-        # ── Deterministic Scoring Engine ──
+        # ── Determine evidence modalities ──
+        has_real_audio = bool(audio_bytes and len(audio_bytes) >= 100)
+        has_real_visual = bool(image_bytes or video_bytes)
+        is_text_only_report = not has_real_audio and not has_real_visual
+
+        # FIX: When no audio is present, cross-modal alignment is unverified (not assumed True)
+        effective_text_audio_alignment = extraction.text_audio_alignment if has_real_audio else False
+
+        # ── Layer 5: Deterministic Scoring Engine with 5-Layer Multi-Factor Formulation ──
         score_res: DeterministicScoreResult = scoring_engine.compute_score(
             speaker_distress_level=extraction.speaker_distress_level,
             specific_details_provided=extraction.specific_details_provided,
             acoustic_cues=extraction.acoustic_cues,
-            text_audio_alignment=extraction.text_audio_alignment,
+            text_audio_alignment=effective_text_audio_alignment,
             has_contradiction=bool(extraction.inconsistency_notes),
             is_authoritative_grounded=is_grounded,
             grounding_status=grounding_status,
@@ -181,14 +252,51 @@ class EmergencyVerificationPipeline:
             has_text_content=has_text,
             location_name=location_name,
             detected_hazards=extraction.detected_hazards or hazard_tags,
+            # 5-Layer Multi-Factor & Forensic inputs
+            cluster_density_factor=cluster_density_factor,
+            bonus_cluster_override=cluster_bonus if cluster_bonus > 0 else None,
+            is_recycled_archive=is_recycled_archive,
+            is_diffusion_generated=is_diffusion_generated,
+            is_vpn_or_tor=is_vpn_or_tor,
+            is_emulator=is_emulator,
+            elevation_anomaly=elevation_anomaly,
+            device_attestation_passed=device_attestation_passed,
+            ip_gps_distance_km=ip_gps_distance_km,
+            headcount=extraction.headcount,
+            vulnerable_groups_count=len(extraction.vulnerable_groups),
+            # NEW v5.0: Evidence modality flags
+            has_audio_evidence=has_real_audio,
+            has_visual_evidence=has_real_visual,
+            is_text_only=is_text_only_report,
         )
 
         parsed_transcript = extraction.transcript or text_message or ""
 
+        # Comprehensive 5-Layer Breakdown Dictionary
+        breakdown_5layer = {
+            "layer_1_hardware_attestation": hw_info,
+            "layer_2_swarm_consensus": cluster_info,
+            "layer_3_visual_forensics": visual_info,
+            "layer_4_semantic_consistency": sem_info,
+            "layer_5_bayesian_classifier": {
+                "triage_tier": score_res.triage_tier,
+                "verification_score": score_res.verification_score,
+                "cluster_density_factor": score_res.cluster_density_factor,
+                "bonus_cluster": score_res.bonus_cluster,
+                "penalty_tamper": score_res.penalty_tamper,
+                "breakdown": score_res.breakdown,
+            },
+        }
+
         return {
-            "is_verified": score_res.verification_score >= 55,
+            "is_verified": score_res.verification_score >= 80 or (score_res.triage_tier == "VERIFIED_EMERGENCY"),
             "verification_score": score_res.verification_score,
             "vulnerability_level": score_res.vulnerability_level,
+            "triage_tier": score_res.triage_tier,
+            "cluster_density_factor": score_res.cluster_density_factor,
+            "bonus_cluster": score_res.bonus_cluster,
+            "penalty_tamper": score_res.penalty_tamper,
+            "device_integrity_score": score_res.device_integrity_score,
             "semantic_score": score_res.semantic_score,
             "consistency_score": score_res.consistency_score,
             "grounding_score": score_res.grounding_score,
@@ -210,9 +318,12 @@ class EmergencyVerificationPipeline:
             "recommendation": score_res.recommendation,
             "concise_report": score_res.concise_report,
             "grounding_summary": grounding_res.combined_summary,
+            "verification_breakdown_5layer": breakdown_5layer,
             "ai_verification_report": {
                 "verification_score": score_res.verification_score,
                 "vulnerability_level": score_res.vulnerability_level,
+                "triage_tier": score_res.triage_tier,
+                "cluster_density_factor": score_res.cluster_density_factor,
                 "extraction": extraction.model_dump(),
                 "grounding": {
                     "status": grounding_status,
@@ -223,9 +334,15 @@ class EmergencyVerificationPipeline:
                     "cluster_id": cluster_id,
                     "corroborated": is_cluster_corroborated,
                     "nearby_reports_count": corroborating_count,
+                    "cluster_density_factor": cluster_density_factor,
+                    "cluster_bonus": cluster_bonus,
                     "score": score_res.cluster_score,
                 },
+                "hardware_attestation": hw_info,
+                "visual_forensics": visual_info,
+                "semantic_consistency": sem_info,
                 "breakdown": score_res.breakdown,
+                "breakdown_5layer": breakdown_5layer,
             },
         }
 
@@ -238,12 +355,8 @@ class EmergencyVerificationPipeline:
         hazard_tags: List[str],
         location_name: Optional[str] = None,
     ) -> VoiceTextVerificationExtraction:
-        """
-        Phases 1 & 2: Gemini Audio Processing + Cross-Modal Consistency Check.
-        """
-        # If pre-extracted transcript provided and no audio
-        if not audio_bytes and (audio_transcript or text_message):
-            return self._extract_from_text_heuristic(text_message or audio_transcript or "", hazard_tags, location_name=location_name)
+        # Multi-Dialect Rescue Triage & Forensic Verification Engine (v4.2-Production)
+        from app.ai.triage_engine import process_emergency_broadcast
 
         # Silent or empty audio check
         if audio_bytes and len(audio_bytes) < 100 and not text_message:
@@ -262,51 +375,63 @@ class EmergencyVerificationPipeline:
                 suspected_prank_or_synthetic=False,
             )
 
-        # Call Gemini if client is configured
-        if self.client and audio_bytes:
-            try:
-                system_instruction = (
-                    "You are the Voice & Text Emergency Verification Engine for ReliefPulse-AI. "
-                    "Analyze the emergency distress audio recording and cross-reference with any user typed text and hazard badges. "
-                    "1. Transcribe the audio note verbatim in 'transcript'.\n"
-                    "2. Provide a fluent, accurate English translation in 'english_translation' (e.g. translating Roman Urdu/Urdu speech into clear English distress statements).\n"
-                    "3. Provide an accurate Urdu script translation in 'urdu_translation'.\n"
-                    "4. Write an operational, concise situation summary in 'situation_summary' stating what happened, location, victims, and urgent assistance needed.\n"
-                    "5. Estimate headcount (integer) and extract any vulnerable groups (infants, elderly, pregnant, injured, trapped).\n"
-                    "6. Detect background acoustic distress cues (sirens, rushing water, alarms, crying, screaming, building creaking).\n"
-                    "7. Assess speaker distress level ('critical', 'elevated', 'calm', or 'inaudible').\n"
-                    "8. Check if spoken audio aligns with typed text.\n"
-                    "9. Detect if audio is synthetic TTS, comedy/music prank, or spam.\n"
-                    "Output STRICTLY according to the VoiceTextVerificationExtraction JSON schema."
-                )
+        master_payload = await process_emergency_broadcast(
+            distress_content=text_message or audio_transcript or "",
+            audio_bytes=audio_bytes,
+            audio_mime_type=audio_mime_type,
+            location_hint=location_name,
+            hazard_tags=hazard_tags,
+        )
 
-                contents: List[Any] = [
-                    types.Part.from_bytes(data=audio_bytes, mime_type=audio_mime_type),
-                ]
-                prompt_text = f"User typed text: {text_message or 'None'}\nReported location: {location_name or 'Unknown'}\nSelected hazard badges: {', '.join(hazard_tags) if hazard_tags else 'None'}"
-                contents.append(prompt_text)
+        demo = master_payload.headcount_matrix.demographic_breakdown
+        vuln = []
+        if demo.infants_and_children > 0:
+            vuln.append({"type": "infants_and_children", "count": demo.infants_and_children})
+        if demo.elderly_individuals > 0:
+            vuln.append({"type": "elderly", "count": demo.elderly_individuals})
+        if demo.pregnant_women > 0:
+            vuln.append({"type": "pregnant", "count": demo.pregnant_women})
+        if demo.critically_injured_or_sick > 0:
+            vuln.append({"type": "injured_or_sick", "count": demo.critically_injured_or_sick})
 
-                response = await asyncio.to_thread(
-                    self.client.models.generate_content,
-                    model=self.model,
-                    contents=contents,
-                    config=types.GenerateContentConfig(
-                        system_instruction=system_instruction,
-                        response_mime_type="application/json",
-                        response_schema=VoiceTextVerificationExtraction,
-                        temperature=0.1,
-                    ),
-                )
+        # FIX v5.0: Map distress level with nuance instead of always returning critical/elevated.
+        # Allow 'calm' for reports without strong distress indicators.
+        urgency = master_payload.triage_scoring.urgency_level
+        if urgency == "CRITICAL":
+            mapped_distress = "critical"
+        elif urgency in ("HIGH", "ELEVATED"):
+            mapped_distress = "elevated"
+        elif urgency in ("MEDIUM", "STANDARD"):
+            mapped_distress = "calm"  # FIX: Allow calm for medium urgency
+        else:
+            mapped_distress = "calm"
 
-                if response and response.text:
-                    data = json.loads(response.text)
-                    return VoiceTextVerificationExtraction(**data)
+        # FIX: specific_details_provided should require real granularity
+        # Generic locations like 'Lahore' don't count — need streets, blocks, floor numbers
+        landmarks = master_payload.spatial_and_tactical_intelligence.reported_landmarks
+        has_real_details = len(landmarks) >= 2 or any(
+            kw in str(landmarks).lower() for kw in [
+                "street", "block", "sector", "gali", "road", "floor", "house",
+                "chhat", "roof", "hospital", "school", "mohalla", "colony",
+                "apartment", "flat", "building", "bazaar", "chowk",
+            ]
+        )
 
-            except Exception as e:
-                print(f"[VerificationPipeline] Gemini Voice Extraction call failed: {e}. Falling back to heuristic extraction.")
-
-        # Offline / Test / Heuristic Fallback
-        return self._extract_from_text_heuristic(text_message or audio_transcript or "", hazard_tags, location_name=location_name)
+        return VoiceTextVerificationExtraction(
+            transcript=master_payload.standardized_english_intelligence.verbatim_clean_translation,
+            english_translation=master_payload.standardized_english_intelligence.verbatim_clean_translation,
+            urdu_translation=master_payload.standardized_english_intelligence.verbatim_clean_translation,
+            situation_summary=master_payload.standardized_english_intelligence.short_incident_summary,
+            headcount=master_payload.headcount_matrix.total_estimated_victims,
+            vulnerable_groups=vuln,
+            detected_hazards=[master_payload.triage_scoring.primary_hazard_classification] + master_payload.triage_scoring.secondary_hazards,
+            acoustic_cues=master_payload.forensic_verification.forensic_flags,
+            speaker_distress_level=mapped_distress,
+            specific_details_provided=has_real_details,
+            text_audio_alignment=bool(audio_bytes and len(audio_bytes) >= 100),  # FIX: Only true when audio exists
+            inconsistency_notes="",
+            suspected_prank_or_synthetic=master_payload.forensic_verification.adversarial_prank_detected,
+        )
 
     def _extract_from_text_heuristic(self, text: str, hazard_tags: List[str], location_name: Optional[str] = None) -> VoiceTextVerificationExtraction:
         """Heuristic extractor for testing and offline scenarios."""
@@ -469,6 +594,11 @@ class EmergencyVerificationPipeline:
             "is_verified": False,
             "verification_score": 40,
             "vulnerability_level": "requires_human_triage",
+            "triage_tier": "SUSPECTED_UNCONFIRMED",
+            "cluster_density_factor": 0.0,
+            "bonus_cluster": 0.0,
+            "penalty_tamper": 0.0,
+            "device_integrity_score": 100,
             "semantic_score": score_res.semantic_score,
             "consistency_score": score_res.consistency_score,
             "grounding_score": 10,
@@ -487,15 +617,23 @@ class EmergencyVerificationPipeline:
             "detected_hazards": ["general_emergency"],
             "acoustic_cues": [],
             "rubric_breakdown": score_res.breakdown,
-            "recommendation": f"FAIL-OPEN TRIAGE: {reason}. Escalated to coordinator for manual dispatch.",
-            "concise_report": f"ReliefPulse Fail-Open Triage [Score: 40/100 | REQUIRES_HUMAN_TRIAGE]\nReason: {reason}. This emergency report has NOT been rejected.",
+            "recommendation": f"FAIL-OPEN TRIAGE: {reason}. Escalated to Rapid Callback Queue for manual dispatch.",
+            "concise_report": f"ReliefPulse Fail-Open Triage [Score: 40/100 | SUSPECTED_UNCONFIRMED]\nReason: {reason}. This emergency report has NOT been rejected.",
             "stage_1_location": {"status": "unreported_localized_incident", "score": 10},
             "stage_2_visual": {"status": "no_visual_required", "score": 10},
             "stage_3_intent": {"status": "fail_open_baseline", "score": 10},
             "stage_4_provenance": {"status": "verified_channel", "score": 10},
+            "verification_breakdown_5layer": {
+                "layer_1_hardware_attestation": {"device_integrity_score": 100, "status": "fail_open"},
+                "layer_2_swarm_consensus": {"cluster_density_factor": 0.0, "status": "fail_open"},
+                "layer_3_visual_forensics": {"visual_score": 100, "status": "fail_open"},
+                "layer_4_semantic_consistency": {"consistency_score": 100, "status": "fail_open"},
+                "layer_5_bayesian_classifier": {"triage_tier": "SUSPECTED_UNCONFIRMED", "score": 40},
+            },
             "ai_verification_report": {
                 "fail_open": True,
                 "reason": reason,
+                "triage_tier": "SUSPECTED_UNCONFIRMED",
                 "breakdown": score_res.breakdown,
             },
         }

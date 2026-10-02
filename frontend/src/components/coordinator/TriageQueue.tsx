@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { ShieldCheck } from 'lucide-react';
 import { TriageCard } from './TriageCard';
 
 interface Incident {
@@ -20,6 +21,15 @@ interface Incident {
   first_report_at: string;
   last_report_at: string;
   gps_text_match?: { level: string; confidence: number };
+  triage_tier?: string;
+  cluster_density_factor?: number;
+  device_integrity_score?: number;
+  media_forensics_score?: number;
+  semantic_consistency_score?: number;
+  tamper_penalty?: number;
+  verification_score?: number;
+  callback_status?: string;
+  verification_breakdown_5layer?: any;
 }
 
 interface TriageQueueProps {
@@ -29,6 +39,7 @@ interface TriageQueueProps {
   onReject?: (id: string) => void;
   filterSeverity?: string;
   onFilterChange?: (severity: string) => void;
+  onTriggerCallback?: (id: string) => Promise<void>;
 }
 
 function timeAgo(dateStr: string): string {
@@ -50,6 +61,7 @@ export const TriageQueue: React.FC<TriageQueueProps> = ({
   onReject,
   filterSeverity,
   onFilterChange,
+  onTriggerCallback,
 }) => {
   const severityFilters = ['all', 'critical', 'high', 'medium', 'low'];
 
@@ -77,9 +89,14 @@ export const TriageQueue: React.FC<TriageQueueProps> = ({
       {/* Cards list */}
       <div className="flex-grow overflow-y-auto space-y-3 pr-1">
         {incidents.length === 0 && (
-          <div className="text-center text-slate-400 py-16">
-            <p className="text-base font-bold text-slate-300">No Incidents in Queue</p>
-            <p className="text-xs mt-1 text-slate-500">All emergency clusters triaged.</p>
+          <div className="flex flex-col items-center justify-center text-center text-slate-400 py-20 px-4">
+            <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-sky-blue/80 mb-3.5 shadow-inner">
+              <ShieldCheck size={28} className="text-relief-green" />
+            </div>
+            <p className="text-sm font-bold text-warm-white">No Incidents in Queue</p>
+            <p className="text-xs text-slate-400 mt-1 max-w-[260px] leading-relaxed">
+              All emergency clusters have been triaged. Waiting for new live SOS broadcasts.
+            </p>
           </div>
         )}
         {incidents.map((inc) => (
@@ -101,9 +118,19 @@ export const TriageQueue: React.FC<TriageQueueProps> = ({
             anomalyFlags={inc.anomaly_flags}
             representativeAudioUrl={inc.representative_audio_url}
             gpsTextMatch={inc.gps_text_match}
+            triageTier={inc.triage_tier}
+            clusterDensityFactor={inc.cluster_density_factor}
+            deviceIntegrityScore={inc.device_integrity_score}
+            mediaForensicsScore={inc.media_forensics_score}
+            semanticConsistencyScore={inc.semantic_consistency_score}
+            tamperPenalty={inc.tamper_penalty}
+            verificationScore={inc.verification_score}
+            callbackStatus={inc.callback_status}
+            verificationBreakdown5layer={inc.verification_breakdown_5layer}
             isSelected={selectedId === inc.incident_id}
             onClick={() => onSelect?.(inc.incident_id)}
             onReject={onReject}
+            onTriggerCallback={onTriggerCallback}
           />
         ))}
       </div>

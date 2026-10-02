@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import defaultTheme from "tailwindcss/defaultTheme";
 
 const config: Config = {
   content: [
@@ -8,6 +9,11 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['var(--font-geist-sans)', ...defaultTheme.fontFamily.sans],
+        mono: ['var(--font-geist-mono)', ...defaultTheme.fontFamily.mono],
+        urdu: ['var(--font-urdu)', ...defaultTheme.fontFamily.serif],
+      },
       colors: {
         'deep-navy': '#0A0F1C', // Darker background
         'warm-white': '#FFFFFF', // Keeping white for text

@@ -6,7 +6,6 @@ import { useTranslation } from '@/lib/i18n';
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
 import { getUserReportCode } from '@/lib/userReport';
 import {
-  ShieldAlert,
   Home,
   Radio,
   Clock,
@@ -52,30 +51,35 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({ className = '' }) =>
   return (
     <header suppressHydrationWarning className={`w-full sticky top-3 z-50 transition-all duration-300 ${className}`}>
       <div suppressHydrationWarning className="glass rounded-2xl border border-white/15 px-3 sm:px-4 py-2.5 shadow-2xl backdrop-blur-2xl flex items-center justify-between gap-2 sm:gap-4 overflow-hidden">
-        {/* Brand Logo & Telemetry Beacon */}
+        {/* Brand Logo & Redesigned Application Name */}
         <div
           onClick={() => router.push('/')}
-          className="flex items-center gap-2 sm:gap-2.5 cursor-pointer group shrink-0"
+          className="flex items-center gap-2.5 sm:gap-3 cursor-pointer group shrink-0"
         >
           <div className="relative flex items-center justify-center shrink-0">
-            <div className="absolute inset-0 rounded-xl bg-pulse-red/40 animate-ping" />
-            <div className="relative p-2 rounded-xl bg-gradient-to-tr from-pulse-red to-amber-alert text-white shadow-lg group-hover:scale-105 transition-transform">
-              <ShieldAlert size={18} className="sm:w-5 sm:h-5" />
+            <div className="absolute -inset-1 rounded-2xl bg-gradient-to-tr from-[#FF4D6D]/30 via-transparent to-cyan-400/30 blur-sm group-hover:scale-110 transition-all opacity-80 group-hover:opacity-100" />
+            <div className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl overflow-hidden p-1 bg-gradient-to-b from-[#131e3a] to-[#0a1020] border border-white/15 shadow-xl backdrop-blur-md flex items-center justify-center group-hover:scale-105 group-hover:border-cyan-400/40 transition-all">
+              <img
+                src="/logo.png"
+                alt="ReliefPulse AI Logo"
+                className="w-full h-full object-contain filter drop-shadow-[0_0_8px_rgba(255,77,109,0.35)]"
+              />
             </div>
           </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm sm:text-base font-black tracking-tight text-gradient">
-                ReliefPulse
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <div className="flex items-baseline tracking-tight select-none">
+              <span className="text-[15px] sm:text-[17px] font-black text-white tracking-tight drop-shadow-sm">
+                Relief
               </span>
-              <span className="text-[9px] sm:text-[10px] px-1.5 py-0.2 rounded-md bg-sky-blue/15 text-sky-blue border border-sky-blue/30 font-mono font-bold uppercase">
-                AI
+              <span className="text-[15px] sm:text-[17px] font-black bg-gradient-to-r from-[#FF4D6D] via-[#FF6B6B] to-[#FF8E53] bg-clip-text text-transparent tracking-tight">
+                Pulse
               </span>
             </div>
-            <div className="flex items-center gap-1.5 text-[9px] sm:text-[10px] text-slate-400 font-mono">
-              <span className="w-1.5 h-1.5 rounded-full bg-relief-green animate-pulse shrink-0" />
-              <span className="hidden sm:inline">{t('network_live_badge') || 'Emergency Network'}</span>
-              <span className="sm:hidden text-relief-green font-bold">LIVE</span>
+            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-gradient-to-r from-cyan-500/15 to-blue-500/15 border border-cyan-400/40 text-cyan-300 shadow-[0_0_10px_rgba(6,182,212,0.25)]">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse shrink-0" />
+              <span className="text-[9px] sm:text-[10px] font-mono font-black tracking-wider uppercase">
+                AI
+              </span>
             </div>
           </div>
         </div>
@@ -112,7 +116,7 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({ className = '' }) =>
           <a
             href="tel:1122"
             title="Call Emergency Rescue 1122"
-            className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-pulse-red to-rose-600 hover:from-red-600 hover:to-rose-700 text-white text-[11px] sm:text-xs font-black font-mono shadow-md border border-red-400/40 transition-all active:scale-95 shrink-0 cursor-pointer"
+            className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-pulse-red to-rose-600 hover:from-red-600 hover:to-rose-700 text-white text-[11px] sm:text-xs font-black font-mono tabular-nums shadow-md border border-red-400/40 transition-all active:scale-95 shrink-0 cursor-pointer"
           >
             <span className="text-xs">🚑</span>
             <span className="tracking-wide">1122</span>

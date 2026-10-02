@@ -7,7 +7,7 @@ import {
   removeFromQueue,
   updateQueueItem,
   clearQueue as dbClearQueue,
-  OfflineQueueItem,
+  type OfflineQueueItem,
 } from '@/lib/offline-db';
 import { API_BASE_URL } from '@/lib/constants';
 import { saveUserReport } from '@/lib/userReport';

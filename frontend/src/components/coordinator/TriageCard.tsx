@@ -19,8 +19,15 @@ import {
   Baby,
   Clock,
   Send,
+  PhoneCall,
+  Smartphone,
+  ShieldCheck,
+  Activity,
+  Layers,
+  Cpu,
 } from 'lucide-react';
 import { DispatchModal } from './DispatchModal';
+import { triggerRapidCallback } from '@/lib/api';
 
 interface MedicalRisk {
   type: string;
@@ -51,11 +58,21 @@ interface TriageCardProps {
   anomalyFlags: AnomalyFlag[];
   representativeAudioUrl?: string;
   gpsTextMatch?: { level: string; confidence: number };
+  triageTier?: 'VERIFIED_EMERGENCY' | 'SUSPECTED_UNCONFIRMED' | 'FLAGGED_OR_PRANK' | string;
+  clusterDensityFactor?: number;
+  deviceIntegrityScore?: number;
+  mediaForensicsScore?: number;
+  semanticConsistencyScore?: number;
+  tamperPenalty?: number;
+  verificationScore?: number;
+  callbackStatus?: string;
+  verificationBreakdown5layer?: any;
   isSelected?: boolean;
   onClick?: () => void;
   onApprove?: (id: string) => void;
   onReject?: (id: string) => void;
   onSkip?: (id: string) => void;
+  onTriggerCallback?: (id: string) => Promise<void>;
 }
 
 const hazardIcons: Record<string, React.ReactNode> = {
@@ -83,15 +100,27 @@ export const TriageCard: React.FC<TriageCardProps> = ({
   anomalyFlags,
   representativeAudioUrl,
   gpsTextMatch,
+  triageTier,
+  clusterDensityFactor = 0.0,
+  deviceIntegrityScore = 100,
+  mediaForensicsScore = 100,
+  semanticConsistencyScore = 100,
+  tamperPenalty = 0,
+  verificationScore,
+  callbackStatus,
+  verificationBreakdown5layer,
   isSelected,
   onClick,
   onApprove,
   onReject,
   onSkip,
+  onTriggerCallback,
 }) => {
   const [expanded, setExpanded] = useState(false);
   const [showDispatch, setShowDispatch] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [callbackState, setCallbackState] = useState<string | null>(callbackStatus || null);
+  const [isCalling, setIsCalling] = useState(false);
 
   const borderColors: Record<string, string> = {
     critical: 'border-l-pulse-red rtl:border-l-transparent rtl:border-r-pulse-red',
@@ -112,7 +141,27 @@ export const TriageCard: React.FC<TriageCardProps> = ({
     setExpanded(!expanded);
   };
 
+  const handleTriggerCallback = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsCalling(true);
+    try {
+      if (onTriggerCallback) {
+        await onTriggerCallback(id);
+      } else {
+        await triggerRapidCallback({ incidentId: id, channel: 'auto' });
+      }
+      setCallbackState('callback_dispatched');
+    } catch (err) {
+      console.error('Rapid callback error:', err);
+      setCallbackState('callback_failed');
+    } finally {
+      setIsCalling(false);
+    }
+  };
+
   const confidencePercent = Math.round(clusterConfidence * 100);
+  const tierUpper = (triageTier || '').toUpperCase();
+  const effectiveScore = verificationScore !== undefined ? verificationScore : confidencePercent;
 
   return (
     <>
@@ -133,10 +182,35 @@ export const TriageCard: React.FC<TriageCardProps> = ({
               >
                 {severity}
               </span>
-              <span className="text-xs font-mono text-sky-blue font-bold">#{incidentCode}</span>
+              <span className="text-xs font-mono tabular-nums text-sky-blue font-bold">#{incidentCode}</span>
             </div>
-            <span className="text-xs text-slate-400 flex items-center gap-1 font-mono" suppressHydrationWarning>
+            <span className="text-xs text-slate-400 flex items-center gap-1 font-mono tabular-nums" suppressHydrationWarning>
               <Clock size={12} /> {timeAgo}
+            </span>
+          </div>
+
+          {/* 3-Tier Status Banner */}
+          <div className="flex items-center justify-between gap-1.5 mb-2.5">
+            {tierUpper === 'VERIFIED_EMERGENCY' && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm shadow-emerald-900/30">
+                <ShieldCheck size={12} className="text-emerald-400" />
+                Verified Emergency • Immediate Dispatch
+              </span>
+            )}
+            {(tierUpper === 'SUSPECTED_UNCONFIRMED' || !triageTier) && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm shadow-amber-900/30">
+                <Activity size={12} className="text-amber-400" />
+                Suspected • Rapid Callback Queue
+              </span>
+            )}
+            {tierUpper === 'FLAGGED_OR_PRANK' && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wider bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm shadow-rose-900/30">
+                <AlertTriangle size={12} className="text-rose-400" />
+                Flagged Prank • Quarantined
+              </span>
+            )}
+            <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/10 text-slate-300">
+              {effectiveScore}/100
             </span>
           </div>
 
@@ -148,13 +222,13 @@ export const TriageCard: React.FC<TriageCardProps> = ({
           {/* Key metrics row */}
           <div className="flex items-center flex-wrap gap-x-3 gap-y-1 text-xs text-slate-300 mb-2.5">
             <span className="flex items-center gap-1">
-              <Users size={13} className="text-slate-400" /> {headcount} people
+              <Users size={13} className="text-slate-400" /> <span className="font-mono tabular-nums font-bold">{headcount}</span> people
             </span>
             <span className="flex items-center gap-1">
               {hazardIcons[hazardType] || <AlertTriangle size={13} />}
               <span className="capitalize">{hazardType.replace(/_/g, ' ')}</span>
             </span>
-            <span className="text-xs text-slate-400 font-mono">
+            <span className="text-xs text-slate-400 font-mono tabular-nums">
               {totalReports} reports
             </span>
           </div>
@@ -171,7 +245,8 @@ export const TriageCard: React.FC<TriageCardProps> = ({
                   {risk.type === 'elderly' && '👴'}
                   {risk.type === 'pregnant' && '🤰'}
                   {risk.type === 'injured' && '🩹'}
-                  <span>{risk.count}x {risk.type}{risk.detail ? ` (${risk.detail})` : ''}</span>
+                  <span className="font-mono tabular-nums font-bold">{risk.count}x</span>
+                  <span>{risk.type}{risk.detail ? ` (${risk.detail})` : ''}</span>
                 </span>
               ))}
             </div>
@@ -192,7 +267,7 @@ export const TriageCard: React.FC<TriageCardProps> = ({
                 style={{ width: `${confidencePercent}%` }}
               />
             </div>
-            <span className="text-[10px] font-mono text-slate-400 shrink-0">{confidencePercent}%</span>
+            <span className="text-[10px] font-mono tabular-nums text-slate-400 shrink-0">{confidencePercent}%</span>
           </div>
 
           {/* GPS match indicator */}
@@ -209,6 +284,26 @@ export const TriageCard: React.FC<TriageCardProps> = ({
             </div>
           )}
 
+          {/* 5-Layer Forensic Badges */}
+          <div className="grid grid-cols-2 gap-1.5 mb-2.5 text-[10px] text-slate-300">
+            <div className="flex items-center gap-1 bg-white/5 px-2 py-1 rounded border border-white/10" title="Layer 1: DeviceCheck & Non-VPN terrestrial match">
+              <Smartphone size={11} className={deviceIntegrityScore >= 70 ? 'text-relief-green' : 'text-pulse-red'} />
+              <span>Attestation: <span className="font-mono font-bold">{deviceIntegrityScore}%</span></span>
+            </div>
+            <div className="flex items-center gap-1 bg-white/5 px-2 py-1 rounded border border-white/10" title="Layer 2: Multi-witness co-location consensus (Cd = ln(1+N))">
+              <Layers size={11} className={clusterDensityFactor > 0.5 ? 'text-sky-blue' : 'text-slate-400'} />
+              <span>Swarm: <span className="font-mono font-bold">Cd={clusterDensityFactor.toFixed(2)}</span></span>
+            </div>
+            <div className="flex items-center gap-1 bg-white/5 px-2 py-1 rounded border border-white/10" title="Layer 3: Visual & Media Forensics (Anti-Recycling / Anti-GenAI)">
+              <ShieldCheck size={11} className={mediaForensicsScore >= 70 ? 'text-relief-green' : 'text-amber-alert'} />
+              <span>Forensics: <span className="font-mono font-bold">{mediaForensicsScore}%</span></span>
+            </div>
+            <div className="flex items-center gap-1 bg-white/5 px-2 py-1 rounded border border-white/10" title="Layer 4: Digital Elevation Model (DEM) & Spectrogram Sanity">
+              <Activity size={11} className={semanticConsistencyScore >= 70 ? 'text-relief-green' : 'text-amber-alert'} />
+              <span>Topography: <span className="font-mono font-bold">{semanticConsistencyScore}%</span></span>
+            </div>
+          </div>
+
           {/* Action buttons */}
           <div className="flex gap-2 pt-1">
             <button
@@ -220,6 +315,30 @@ export const TriageCard: React.FC<TriageCardProps> = ({
             >
               <Send size={13} /> Dispatch
             </button>
+
+            {/* Rapid Callback Action Button */}
+            {(tierUpper === 'SUSPECTED_UNCONFIRMED' || !triageTier || callbackState) && (
+              <button
+                onClick={handleTriggerCallback}
+                disabled={isCalling}
+                className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow ${
+                  callbackState === 'callback_dispatched' || callbackState === 'completed'
+                    ? 'bg-emerald-600/30 text-emerald-300 border border-emerald-500/40'
+                    : isCalling
+                    ? 'bg-amber-500/30 text-amber-200 animate-pulse'
+                    : 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 hover:brightness-110'
+                }`}
+                title="Trigger automated zero-friction verification SMS/IVR callback"
+              >
+                <PhoneCall size={12} className={isCalling ? 'animate-bounce' : ''} />
+                {callbackState === 'callback_dispatched'
+                  ? 'Sent'
+                  : isCalling
+                  ? 'Calling...'
+                  : 'Callback'}
+              </button>
+            )}
+
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -253,6 +372,49 @@ export const TriageCard: React.FC<TriageCardProps> = ({
         {/* Expanded Detail */}
         {expanded && (
           <div className="px-3.5 pb-3.5 pt-2 border-t border-white/10 text-xs space-y-3">
+            {/* 5-Layer Solid Verification Audit Box */}
+            <div className="bg-slate-900/90 rounded-lg p-2.5 border border-sky-blue/20">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-extrabold text-sky-blue uppercase tracking-wider flex items-center gap-1">
+                  <ShieldCheck size={12} /> 5-Layer Solid Verification Audit
+                </span>
+                <span className="text-[10px] font-mono text-slate-400">
+                  Tamper Penalty: -{tamperPenalty} pts
+                </span>
+              </div>
+              <div className="space-y-1.5 text-[11px]">
+                <div className="flex justify-between items-center text-slate-300">
+                  <span className="flex items-center gap-1.5">
+                    <Smartphone size={11} className="text-slate-400" /> Layer 1: Hardware & Network (Anti-Bot)
+                  </span>
+                  <span className="font-mono font-bold text-emerald-400">{deviceIntegrityScore}/100</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-300">
+                  <span className="flex items-center gap-1.5">
+                    <Layers size={11} className="text-slate-400" /> Layer 2: Multi-Witness Swarm Consensus
+                  </span>
+                  <span className="font-mono font-bold text-sky-blue">Cd={clusterDensityFactor.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-300">
+                  <span className="flex items-center gap-1.5">
+                    <ShieldCheck size={11} className="text-slate-400" /> Layer 3: Visual Forensics (Anti-Recycled/GenAI)
+                  </span>
+                  <span className="font-mono font-bold text-amber-400">{mediaForensicsScore}/100</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-300">
+                  <span className="flex items-center gap-1.5">
+                    <Activity size={11} className="text-slate-400" /> Layer 4: Multi-Modal Semantic & Topographical DEM
+                  </span>
+                  <span className="font-mono font-bold text-indigo-300">{semanticConsistencyScore}/100</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-300 border-t border-white/10 pt-1 mt-1 font-bold">
+                  <span className="flex items-center gap-1.5">
+                    <Cpu size={11} className="text-sky-blue" /> Layer 5: Bayesian Risk & Uncertainty Routing
+                  </span>
+                  <span className="font-mono text-warm-white">{tierUpper || 'SUSPECTED_UNCONFIRMED'}</span>
+                </div>
+              </div>
+            </div>
             {/* AI Summary */}
             {aiSummary && (
               <div className="bg-white/5 rounded-lg p-2.5 border border-white/10">

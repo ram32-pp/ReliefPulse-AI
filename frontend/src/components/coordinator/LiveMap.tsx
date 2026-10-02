@@ -85,11 +85,7 @@ export default function LiveMap({ selectedIncident, onMarkerClick, incidents }: 
         };
       });
     }
-    return [
-      { id: 'C-491', lat: 24.8307, lng: 67.0811, count: 14, severity: 'critical' as const },
-      { id: 'C-492', lat: 24.9312, lng: 66.9950, count: 8, severity: 'high' as const },
-      { id: 'C-493', lat: 24.8055, lng: 67.0423, count: 5, severity: 'medium' as const },
-    ];
+    return [];
   }, [incidents]);
 
   if (!mounted) {

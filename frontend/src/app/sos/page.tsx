@@ -348,12 +348,7 @@ function SOSWizardContent() {
                   <div className={`p-2 rounded-xl transition-colors ${autoDetectGps ? 'bg-relief-green/20 text-relief-green' : 'bg-white/10 text-slate-400'}`}>
                     <Crosshair size={18} className={autoDetectGps ? 'animate-pulse' : ''} />
                   </div>
-                  <div>
-                    <span className="text-xs font-bold text-warm-white block">Auto-Detect GPS</span>
-                    <span className="text-[10px] text-slate-400 block">
-                      {autoDetectGps ? 'High-accuracy satellite coordinate lock active' : 'Manual pin adjustment enabled'}
-                    </span>
-                  </div>
+                  <span className="text-xs font-bold text-warm-white">Auto-Detect GPS</span>
                 </div>
                 <button
                   type="button"
@@ -394,7 +389,7 @@ function SOSWizardContent() {
                   <p className="text-xs sm:text-sm font-semibold text-warm-white mt-0.5">
                     {addressText}
                   </p>
-                  <span className="text-[11px] font-mono text-sky-blue mt-1 inline-block">
+                  <span className="text-[11px] font-mono tabular-nums text-sky-blue mt-1 inline-block">
                     Coordinates: {location.lat.toFixed(5)}° N, {location.lng.toFixed(5)}° E
                   </span>
                 </div>
@@ -460,12 +455,9 @@ function SOSWizardContent() {
 
               {/* Fallback / Simultaneous Text Note Area */}
               <div className="mt-5">
-                <label className="text-xs font-bold text-slate-300 mb-1.5 flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
-                    <FileText size={15} className="text-sky-blue" />
-                    Additional Situation Note (Optional or Text SOS)
-                  </span>
-                  <span className="text-[10px] text-slate-400 font-mono">Any Language</span>
+                <label className="text-xs font-bold text-slate-300 mb-1.5 flex items-center gap-1.5">
+                  <FileText size={15} className="text-sky-blue" />
+                  Additional Situation Note (Optional or Text SOS)
                 </label>
                 <textarea
                   value={text}
@@ -636,9 +628,23 @@ function SOSWizardContent() {
 
               {/* Submission Error Banner */}
               {submissionError && (
-                <div className="p-3 rounded-xl bg-red-950/80 border border-red-500/50 text-red-200 text-xs mb-4 flex items-center gap-2">
-                  <AlertTriangle size={16} className="text-pulse-red shrink-0" />
-                  <span>{submissionError}</span>
+                <div className="p-3.5 rounded-xl bg-red-950/80 border border-red-500/50 text-red-200 text-xs mb-4 flex flex-col gap-2">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle size={16} className="text-pulse-red shrink-0 mt-0.5" />
+                    <span className="leading-relaxed">{submissionError}</span>
+                  </div>
+                  {submissionError.includes('cooldown') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (typeof window !== 'undefined') localStorage.removeItem('rp_last_sos_ts');
+                        setSubmissionError(null);
+                      }}
+                      className="self-start mt-1 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-semibold text-xs transition-colors border border-white/20 cursor-pointer"
+                    >
+                      Clear Cooldown &amp; Re-submit Test
+                    </button>
+                  )}
                 </div>
               )}
 

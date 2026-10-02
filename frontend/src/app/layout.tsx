@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import { geistSans, geistMono } from './fonts';
 import { I18nProvider } from '@/lib/i18n';
 import { ServiceWorkerCleaner } from '@/components/ServiceWorkerCleaner';
 import { DOMGuard } from '@/components/DOMGuard';
@@ -25,7 +26,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable}`}
+      suppressHydrationWarning
+    >
       <head>
         <script
           dangerouslySetInnerHTML={{
@@ -192,13 +197,13 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=Noto+Nastaliq+Urdu:wght@400;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&display=swap"
           rel="stylesheet"
         />
       </head>
       <body
         suppressHydrationWarning
-        className="bg-[#070b14] text-warm-white antialiased"
+        className={`${geistSans.variable} ${geistMono.variable} font-sans bg-[#070b14] text-warm-white antialiased`}
       >
         <DOMGuard />
         <ServiceWorkerCleaner />

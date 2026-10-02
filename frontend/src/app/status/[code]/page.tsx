@@ -418,7 +418,7 @@ export default function StatusPage() {
               <span className="text-[10px] uppercase tracking-widest text-slate-400 font-mono block">
                 YOUR INCIDENT TRACKING CODE
               </span>
-              <h1 className="text-2xl sm:text-3xl font-black text-warm-white font-mono flex items-center gap-2 mt-0.5">
+              <h1 className="text-2xl sm:text-3xl font-black text-warm-white font-mono tabular-nums flex items-center gap-2 mt-0.5">
                 #{statusData.display_code || code}
               </h1>
               {statusData.location_name && (
@@ -460,7 +460,7 @@ export default function StatusPage() {
                 <span className="text-[10px] uppercase font-mono tracking-wider text-slate-400 block">
                   Estimated Rescue Arrival
                 </span>
-                <span className="text-lg font-black font-mono text-amber-alert">
+                <span className="text-lg font-black font-mono tabular-nums text-amber-alert">
                   ~{statusData.rescue_eta_minutes || 20} min
                 </span>
                 <span className="text-[11px] text-slate-400 block">

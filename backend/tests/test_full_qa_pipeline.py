@@ -57,29 +57,35 @@ async def run_qa_pipeline():
     # GATE 2: Online Ingestion & Strict 3-Minute Device Rate Limiting
     # ------------------------------------------------------------------
     print("\n>>> GATE 2: Online Ingestion & 3-Minute Device/IP Rate Limiting")
-    rate_limiter = device_rate_limit(window_seconds=180, max_requests=1)
-
-    class MockRequest:
-        def __init__(self, ip):
-            self.headers = {"X-Forwarded-For": ip}
-            self.client = type("Client", (), {"host": ip})()
-
-    unique_ip = f"172.16.0.{random.randint(10, 250)}"
-    req = MockRequest(unique_ip)
-
-    # First report should succeed
-    await rate_limiter(req)
-    print(f"[PASS] Ingestion 1 accepted for IP: {unique_ip}")
-
-    # Immediate second report must return HTTP 429
-    rate_limited = False
+    from app.config import settings
+    orig_env = settings.fastapi_env
+    settings.fastapi_env = "production"
     try:
+        rate_limiter = device_rate_limit(window_seconds=180, max_requests=1)
+
+        class MockRequest:
+            def __init__(self, ip):
+                self.headers = {"X-Forwarded-For": ip}
+                self.client = type("Client", (), {"host": ip})()
+
+        unique_ip = f"172.16.0.{random.randint(10, 250)}"
+        req = MockRequest(unique_ip)
+
+        # First report should succeed
         await rate_limiter(req)
-    except HTTPException as exc:
-        if exc.status_code == 429:
-            rate_limited = True
-            print(f"[PASS] Ingestion 2 immediately blocked with HTTP 429: {exc.detail}")
-    assert rate_limited, "Rate limiter failed to block rapid submission"
+        print(f"[PASS] Ingestion 1 accepted for IP: {unique_ip}")
+
+        # Immediate second report must return HTTP 429
+        rate_limited = False
+        try:
+            await rate_limiter(req)
+        except HTTPException as exc:
+            if exc.status_code == 429:
+                rate_limited = True
+                print(f"[PASS] Ingestion 2 immediately blocked with HTTP 429: {exc.detail}")
+        assert rate_limited, "Rate limiter failed to block rapid submission"
+    finally:
+        settings.fastapi_env = orig_env
 
     # ------------------------------------------------------------------
     # GATE 3: Pre-Gemini Token Saving (Discard Short Spam)
