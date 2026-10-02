@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Search, Navigation, MapPin, Loader2, CheckCircle2, Crosshair, Sparkles, Layers } from 'lucide-react';
+import { Search, Navigation, MapPin, Loader2, CheckCircle2, Crosshair, Layers } from 'lucide-react';
 import { useTranslation } from '@/lib/i18n';
 
 // Fix Leaflet default icon issues in Next.js
@@ -285,7 +285,7 @@ export const MapLocationPicker: React.FC<MapLocationPickerProps> = ({
             type="submit"
             className="px-3 py-2.5 rounded-xl bg-sky-blue/20 hover:bg-sky-blue/30 text-sky-blue border border-sky-blue/30 font-semibold text-xs transition-all flex items-center gap-1 shrink-0 cursor-pointer"
           >
-            <Sparkles size={14} />
+            <Search size={14} />
             <span className="hidden sm:inline">{t('search_btn')}</span>
           </button>
 
